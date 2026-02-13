@@ -38,6 +38,7 @@ extern "C" {
 #include "stm32h5xx_ll_utils.h"
 #include "stm32h5xx_ll_dma.h"
 #include "stm32h5xx_ll_tim.h"
+#include "stm32h5xx_ll_usart.h"
 #include "stm32h5xx_ll_gpio.h"
 
 #if defined(USE_FULL_ASSERT)

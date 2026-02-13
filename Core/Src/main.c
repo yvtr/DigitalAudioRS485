@@ -21,7 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <string.h>
+
 #include "disp7seg.h"
+#include "uart5_it.h"
 
 /* USER CODE END Includes */
 
@@ -48,10 +51,12 @@
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
+void PeriphCommonClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ICACHE_Init(void);
 static void MX_TIM5_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_UART5_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -109,6 +114,9 @@ int main(void)
   /* Configure the system clock */
   SystemClock_Config();
 
+  /* Configure the peripherals common clocks */
+  PeriphCommonClock_Config();
+
   /* USER CODE BEGIN SysInit */
 
   /* USER CODE END SysInit */
@@ -118,6 +126,7 @@ int main(void)
   MX_ICACHE_Init();
   MX_TIM5_Init();
   MX_TIM2_Init();
+  MX_UART5_Init();
   /* USER CODE BEGIN 2 */
   LL_TIM_GenerateEvent_UPDATE(TIM2);
   LL_TIM_EnableCounter(TIM2);
@@ -131,6 +140,10 @@ int main(void)
   DispPutDigit(2, ' ', 0);
   DispPutDigit(3, ' ', 0);
   ShiftReg_Update();
+
+  Uart5_Init();
+  char* s = "Hello, world!\r\n";
+  Uart5_PutData(s, strlen(s));
 
   /* USER CODE END 2 */
 
@@ -147,10 +160,10 @@ int main(void)
       if (TickChk(&Tick1secRef, 1000)) {  // execute every 1s
          LD2_Toggle();
          static uint8_t cnt = 0;
-         DispPutDigit(0, '0'+cnt, 0);
          DispPutDigit(1, 'a'+cnt, 1);
          DispPutDigit(2, 'A'+cnt, 0);
          cnt = (cnt + 1) % 16;
+         Uart5_PutByte('0' + cnt);
       }
 
       static uint32_t Tick100msRef = 0;
@@ -159,7 +172,13 @@ int main(void)
          dot ^= 1;   // toggle dot
          DispPutDigit(3, ' ', dot);
       }
-         /* USER CODE END WHILE */
+
+      int16_t ch = Uart5_GetByte();
+      if (ch != -1) {  // if data received
+         char c = ch;
+         DispPutDigit(0, c, 0);
+      }
+    /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
@@ -219,6 +238,30 @@ void SystemClock_Config(void)
   LL_Init1msTick(80000000);
 
   LL_SetSystemCoreClock(80000000);
+}
+
+/**
+  * @brief Peripherals Common Clock Configuration
+  * @retval None
+  */
+void PeriphCommonClock_Config(void)
+{
+  LL_RCC_PLL3_SetSource(LL_RCC_PLL3SOURCE_HSE);
+  LL_RCC_PLL3_SetVCOInputRange(LL_RCC_PLLINPUTRANGE_8_16);
+  LL_RCC_PLL3_SetVCOOutputRange(LL_RCC_PLLVCORANGE_WIDE);
+  LL_RCC_PLL3_SetM(1);
+  LL_RCC_PLL3_SetN(8);
+  LL_RCC_PLL3_SetP(2);
+  LL_RCC_PLL3_SetQ(4);
+  LL_RCC_PLL3_SetR(2);
+  LL_RCC_PLL3Q_Enable();
+  LL_RCC_PLL3_Enable();
+
+   /* Wait till PLL is ready */
+  while(LL_RCC_PLL3_IsReady() != 1)
+  {
+  }
+
 }
 
 /**
@@ -317,6 +360,72 @@ static void MX_TIM5_Init(void)
 }
 
 /**
+  * @brief UART5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_UART5_Init(void)
+{
+
+  /* USER CODE BEGIN UART5_Init 0 */
+
+  /* USER CODE END UART5_Init 0 */
+
+  LL_USART_InitTypeDef UART_InitStruct = {0};
+
+  LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  LL_RCC_SetUARTClockSource(LL_RCC_UART5_CLKSOURCE_PLL3Q);
+
+  /* Peripheral clock enable */
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_UART5);
+
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOD);
+  /**UART5 GPIO Configuration
+  PC12   ------> UART5_TX
+  PD2   ------> UART5_RX
+  */
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_12;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  GPIO_InitStruct.Alternate = LL_GPIO_AF_8;
+  LL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_2;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  GPIO_InitStruct.Alternate = LL_GPIO_AF_8;
+  LL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /* UART5 interrupt Init */
+  NVIC_SetPriority(UART5_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
+  NVIC_EnableIRQ(UART5_IRQn);
+
+  /* USER CODE BEGIN UART5_Init 1 */
+
+  /* USER CODE END UART5_Init 1 */
+  UART_InitStruct.BaudRate = 115200;
+  UART_InitStruct.DataWidth = LL_USART_DATAWIDTH_8B;
+  UART_InitStruct.StopBits = LL_USART_STOPBITS_1;
+  UART_InitStruct.Parity = LL_USART_PARITY_NONE;
+  UART_InitStruct.TransferDirection = LL_USART_DIRECTION_TX_RX;
+  UART_InitStruct.HardwareFlowControl = LL_USART_HWCONTROL_NONE;
+  UART_InitStruct.OverSampling = LL_USART_OVERSAMPLING_16;
+  LL_USART_Init(UART5, &UART_InitStruct);
+  LL_USART_ConfigAsyncMode(UART5);
+  LL_USART_Enable(UART5);
+  /* USER CODE BEGIN UART5_Init 2 */
+
+  /* USER CODE END UART5_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -332,6 +441,7 @@ static void MX_GPIO_Init(void)
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOH);
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOD);
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOB);
 
   /**/
