@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "disp7seg.h"
 
 /* USER CODE END Includes */
 
@@ -101,6 +102,12 @@ int main(void)
 
   LL_Init1msTick(SystemCoreClock);
 
+  DispPutDigit(0, ' ', 0);
+  DispPutDigit(1, ' ', 0);
+  DispPutDigit(2, ' ', 0);
+  DispPutDigit(3, ' ', 0);
+  ShiftReg_Update();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -109,6 +116,13 @@ int main(void)
    {
       LD2_Toggle();
       LL_mDelay(250);
+      static uint8_t cnt = 0;
+      DispPutDigit(0, '0'+cnt, 0);
+      DispPutDigit(1, 'a'+cnt, 1);
+      DispPutDigit(2, 'A'+cnt, 0);
+      DispPutDigit(3, 'Z'-cnt, 1);
+      if (++cnt > 9) cnt = 0;
+      ShiftReg_Update();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -209,20 +223,35 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOH);
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
-  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOB);
+
+  /**/
+  LL_GPIO_ResetOutputPin(GPIOC, SHR_CLK_Pin|SHR_STR_Pin);
+
+  /**/
+  LL_GPIO_ResetOutputPin(SHR_DOUT_DISP_GPIO_Port, SHR_DOUT_DISP_Pin);
 
   /**/
   LL_GPIO_SetOutputPin(LD2_GPIO_Port, LD2_Pin);
 
   /**/
-  GPIO_InitStruct.Pin = LD2_Pin;
+  GPIO_InitStruct.Pin = SHR_CLK_Pin|SHR_STR_Pin|LD2_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
-  LL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
+  LL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = SHR_DOUT_DISP_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(SHR_DOUT_DISP_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

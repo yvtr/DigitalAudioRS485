@@ -71,8 +71,14 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define SHR_CLK_Pin LL_GPIO_PIN_14
+#define SHR_CLK_GPIO_Port GPIOC
+#define SHR_STR_Pin LL_GPIO_PIN_15
+#define SHR_STR_GPIO_Port GPIOC
 #define LD2_Pin LL_GPIO_PIN_11
 #define LD2_GPIO_Port GPIOC
+#define SHR_DOUT_DISP_Pin LL_GPIO_PIN_8
+#define SHR_DOUT_DISP_GPIO_Port GPIOB
 #ifndef NVIC_PRIORITYGROUP_0
 #define NVIC_PRIORITYGROUP_0         ((uint32_t)0x00000007) /*!< 0 bit  for pre-emption priority,
                                                                  4 bits for subpriority */
@@ -87,6 +93,17 @@ void Error_Handler(void);
 #endif
 
 /* USER CODE BEGIN Private defines */
+static inline void Delay_us() { LL_mDelay(1); } // TODO: implement real microsecond delay
+
+// Shift register control macros
+#define SHR_COUNT    4
+static inline void SHRCLK_HI()      { LL_GPIO_SetOutputPin(   SHR_CLK_GPIO_Port, 		SHR_CLK_Pin); }
+static inline void SHRCLK_LO()      { LL_GPIO_ResetOutputPin( SHR_CLK_GPIO_Port, 		SHR_CLK_Pin); }
+static inline void SHRSTR_HI()      { LL_GPIO_SetOutputPin(   SHR_STR_GPIO_Port, 		SHR_STR_Pin); }
+static inline void SHRSTR_LO()      { LL_GPIO_ResetOutputPin( SHR_STR_GPIO_Port, 		SHR_STR_Pin); }
+static inline void SHRDIN_HI()      { LL_GPIO_SetOutputPin(   SHR_DOUT_DISP_GPIO_Port, SHR_DOUT_DISP_Pin); }
+static inline void SHRDIN_LO()      { LL_GPIO_ResetOutputPin( SHR_DOUT_DISP_GPIO_Port, SHR_DOUT_DISP_Pin); }
+
 
 /* USER CODE END Private defines */
 
