@@ -37,6 +37,7 @@ extern "C" {
 #include "stm32h5xx_ll_cortex.h"
 #include "stm32h5xx_ll_utils.h"
 #include "stm32h5xx_ll_dma.h"
+#include "stm32h5xx_ll_tim.h"
 #include "stm32h5xx_ll_gpio.h"
 
 #if defined(USE_FULL_ASSERT)
@@ -93,7 +94,28 @@ void Error_Handler(void);
 #endif
 
 /* USER CODE BEGIN Private defines */
-static inline void Delay_us() { LL_mDelay(1); } // TODO: implement real microsecond delay
+
+/***************************************************************************//**
+* @brief Read actual counter value of general purpose [us] timer
+* @return Timer value [us]
+*//****************************************************************************/
+static inline uint32_t usTimerGetAbs (void) {
+   return LL_TIM_GetCounter(TIM5);
+}
+
+/***************************************************************************//**
+* @brief Get [us] difference between actual timer value and reference time
+* @param tref  reference time
+* @return time difference [us]
+*//****************************************************************************/
+static inline int32_t usTimerGetRel(uint32_t tref) {
+   return LL_TIM_GetCounter(TIM5) - tref;
+}
+
+static inline void Delay_us(uint32_t t_us) {
+   uint32_t tref = usTimerGetAbs();
+   while (usTimerGetRel(tref) <= t_us);
+}
 
 // Shift register control macros
 #define SHR_COUNT    4

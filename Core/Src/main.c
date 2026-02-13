@@ -50,6 +50,7 @@
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ICACHE_Init(void);
+static void MX_TIM5_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -98,7 +99,10 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_ICACHE_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
+  LL_TIM_GenerateEvent_UPDATE(TIM5);
+  LL_TIM_EnableCounter(TIM5);
 
   LL_Init1msTick(SystemCoreClock);
 
@@ -115,7 +119,7 @@ int main(void)
    while (1)
    {
       LD2_Toggle();
-      LL_mDelay(250);
+      Delay_us(1000000);   // 1s delay
       static uint8_t cnt = 0;
       DispPutDigit(0, '0'+cnt, 0);
       DispPutDigit(1, 'a'+cnt, 1);
@@ -207,6 +211,41 @@ static void MX_ICACHE_Init(void)
   /* USER CODE BEGIN ICACHE_Init 2 */
 
   /* USER CODE END ICACHE_Init 2 */
+
+}
+
+/**
+  * @brief TIM5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM5_Init(void)
+{
+
+  /* USER CODE BEGIN TIM5_Init 0 */
+
+  /* USER CODE END TIM5_Init 0 */
+
+  LL_TIM_InitTypeDef TIM_InitStruct = {0};
+
+  /* Peripheral clock enable */
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM5);
+
+  /* USER CODE BEGIN TIM5_Init 1 */
+
+  /* USER CODE END TIM5_Init 1 */
+  TIM_InitStruct.Prescaler = 79;
+  TIM_InitStruct.CounterMode = LL_TIM_COUNTERMODE_UP;
+  TIM_InitStruct.Autoreload = 4294967295;
+  TIM_InitStruct.ClockDivision = LL_TIM_CLOCKDIVISION_DIV1;
+  LL_TIM_Init(TIM5, &TIM_InitStruct);
+  LL_TIM_DisableARRPreload(TIM5);
+  LL_TIM_SetClockSource(TIM5, LL_TIM_CLOCKSOURCE_INTERNAL);
+  LL_TIM_SetTriggerOutput(TIM5, LL_TIM_TRGO_RESET);
+  LL_TIM_DisableMasterSlaveMode(TIM5);
+  /* USER CODE BEGIN TIM5_Init 2 */
+
+  /* USER CODE END TIM5_Init 2 */
 
 }
 
