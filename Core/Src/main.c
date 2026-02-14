@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 #include <string.h>
 
 #include "disp7seg.h"
@@ -80,6 +81,18 @@ static inline uint32_t TickChk(uint32_t *tref, int_fast16_t tcycle) {
       return 1;
    }
    return 0;
+}
+
+/***************************************************************************//**
+ * @brief  Retargets the C library printf function to the USART.
+ * @param  file: The file handle (not used, can be ignored).
+ * @param  ptr: Pointer to the data buffer to be transmitted.
+ * @param  len: Length of the data buffer.
+ * @retval The number of bytes transmitted.
+ *******************************************************************************/
+int _write(int file, char *ptr, int len) {
+   Uart5_PutData(ptr, len);
+   return len;
 }
 
 
@@ -142,8 +155,7 @@ int main(void)
   ShiftReg_Update();
 
   Uart5_Init();
-  char* s = "Hello, world!\r\n";
-  Uart5_PutData(s, strlen(s));
+  printf("Hello printf\n");
 
   /* USER CODE END 2 */
 
@@ -163,7 +175,11 @@ int main(void)
          DispPutDigit(1, 'a'+cnt, 1);
          DispPutDigit(2, 'A'+cnt, 0);
          cnt = (cnt + 1) % 16;
-         Uart5_PutByte('0' + cnt);
+         static uint32_t Trefus = 0;
+         uint32_t t = usTimerGetAbs();
+         uint32_t tdif = t - Trefus;
+         printf("%6luus\n", tdif);
+         Trefus = t;
       }
 
       static uint32_t Tick100msRef = 0;
