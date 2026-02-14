@@ -21,10 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
 #include <string.h>
 
 #include "disp7seg.h"
+#include "printf.h"
 #include "uart5_it.h"
 
 /* USER CODE END Includes */
@@ -85,15 +85,10 @@ static inline uint32_t TickChk(uint32_t *tref, int_fast16_t tcycle) {
 }
 
 /***************************************************************************//**
- * @brief  Retargets the C library printf function to the USART.
- * @param  file: The file handle (not used, can be ignored).
- * @param  ptr: Pointer to the data buffer to be transmitted.
- * @param  len: Length of the data buffer.
- * @retval The number of bytes transmitted.
- *******************************************************************************/
-int _write(int file, char *ptr, int len) {
-   Uart5_PutData(ptr, len);
-   return len;
+* @brief Character send interface for printf function
+*//****************************************************************************/
+void uart_putc (void* p, char c) {
+   Uart5_PutByte(c);
 }
 
 
