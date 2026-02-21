@@ -26,6 +26,7 @@
 
 #include "disp7seg.h"
 #include "printf.h"
+#include "usart2_dma.h"
 #include "usart3_dma.h"
 #include "uart5_it.h"
 
@@ -49,6 +50,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 
+LL_DMA_LinkNodeTypeDef Node_GPDMA1_Channel3;
 LL_DMA_LinkNodeTypeDef Node_GPDMA1_Channel1;
 
 /* USER CODE BEGIN PV */
@@ -69,7 +71,6 @@ static void MX_UART5_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
-uint8_t Usart3_TxBufWrite(const void* src, size_t n, uint8_t start);
 
 /* USER CODE END PFP */
 
@@ -102,11 +103,22 @@ void uart_putc (void* p, char c) {
 }
 
 
-
-void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
+void ProcessUsart2RxData(const uint8_t* data, uint16_t len) {
+   printf("USART2 RX(%u): ", len);
    for (uint16_t i = 0; i < len; i++) {
       printf("%c", data[i]);
    }
+   printf("\n");
+   Delay_us(500); // simulate long processing time
+}
+
+void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
+   printf("USART3 RX(%u): ", len);
+   for (uint16_t i = 0; i < len; i++) {
+      printf("%c", data[i]);
+   }
+   printf("\n");
+   Delay_us(500); // simulate long processing time
 }
 
 /* USER CODE END 0 */
@@ -171,6 +183,7 @@ int main(void)
   DispPutDigit(3, ' ', 0);
   ShiftReg_Update();
 
+  Usart2_DMA_Init(ProcessUsart2RxData);
   Usart3_DMA_Init(ProcessUsart3RxData);
   Uart5_Init();
   printf("Hello printf\n");
@@ -195,6 +208,8 @@ int main(void)
          char s[256];
          sprintf(s, "%u: Hello DMA World! This is a long message to test the double buffering mechanism of USART3 Tx DMA.\n", cnt);
          Usart3_TxBufWrite(s, strlen(s), cnt&0x04); // write data and request flush
+         sprintf(s, "%u: Message from USART2 DMA.\n", cnt);
+         Usart2_TxBufWrite(s, strlen(s), !(cnt&0x04));
       }
 
       static uint32_t Tick100msRef = 0;
@@ -210,6 +225,7 @@ int main(void)
          DispPutDigit(0, c, 0);
       }
 
+      Usart2_DMA_Task(); // handle USART2 DMA rx/tx
       Usart3_DMA_Task(); // handle USART3 DMA rx/tx
 
 
@@ -317,6 +333,8 @@ static void MX_GPDMA1_Init(void)
   /* GPDMA1 interrupt Init */
   NVIC_SetPriority(GPDMA1_Channel0_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
   NVIC_SetPriority(GPDMA1_Channel1_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
+  NVIC_SetPriority(GPDMA1_Channel2_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
+  NVIC_SetPriority(GPDMA1_Channel3_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(),0, 0));
 
   /* USER CODE BEGIN GPDMA1_Init 1 */
 
@@ -498,11 +516,22 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE BEGIN USART2_Init 0 */
 
+   // WARNING
+   // Remove the second redefinition of NodeConfig after Cube MX code generation.
+   LL_DMA_InitNodeTypeDef NodeConfig = {0};
+
+   NodeConfig.SrcAddress        = (uint32_t)LL_USART_DMA_GetRegAddr(USART2, LL_USART_DMA_REG_DATA_RECEIVE);
+   NodeConfig.DestAddress       = (uint32_t)&Usart2RxDmaBuf;
+   NodeConfig.BlkDataLength     = ARRAY_COUNT(Usart2RxDmaBuf);
+
+
   /* USER CODE END USART2_Init 0 */
 
   LL_USART_InitTypeDef USART_InitStruct = {0};
 
   LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+  LL_DMA_InitLinkedListTypeDef DMA_InitLinkedListStruct = {0};
+  LL_DMA_InitTypeDef DMA_InitStruct = {0};
 
   LL_RCC_SetUSARTClockSource(LL_RCC_USART2_CLKSOURCE_PCLK1);
 
@@ -523,7 +552,82 @@ static void MX_USART2_UART_Init(void)
   GPIO_InitStruct.Alternate = LL_GPIO_AF_7;
   LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /* USART2 DMA Init */
+
+  /* GPDMA1_REQUEST_USART2_RX Init */
+  NodeConfig.DestAllocatedPort = LL_DMA_DEST_ALLOCATED_PORT1;
+  NodeConfig.DestHWordExchange = LL_DMA_DEST_HALFWORD_PRESERVE;
+  NodeConfig.DestByteExchange = LL_DMA_DEST_BYTE_PRESERVE;
+  NodeConfig.DestBurstLength = 1;
+  NodeConfig.DestIncMode = LL_DMA_DEST_INCREMENT;
+  NodeConfig.DestDataWidth = LL_DMA_DEST_DATAWIDTH_BYTE;
+  NodeConfig.SrcAllocatedPort = LL_DMA_SRC_ALLOCATED_PORT0;
+  NodeConfig.SrcByteExchange = LL_DMA_SRC_BYTE_PRESERVE;
+  NodeConfig.DataAlignment = LL_DMA_DATA_ALIGN_ZEROPADD;
+  NodeConfig.SrcBurstLength = 1;
+  NodeConfig.SrcIncMode = LL_DMA_SRC_FIXED;
+  NodeConfig.SrcDataWidth = LL_DMA_SRC_DATAWIDTH_BYTE;
+  NodeConfig.TransferEventMode = LL_DMA_TCEM_BLK_TRANSFER;
+  NodeConfig.Mode = LL_DMA_NORMAL;
+  NodeConfig.TriggerPolarity = LL_DMA_TRIG_POLARITY_MASKED;
+  NodeConfig.BlkHWRequest = LL_DMA_HWREQUEST_SINGLEBURST;
+  NodeConfig.Direction = LL_DMA_DIRECTION_PERIPH_TO_MEMORY;
+  NodeConfig.Request = LL_GPDMA1_REQUEST_USART2_RX;
+  NodeConfig.UpdateRegisters = (LL_DMA_UPDATE_CTR1 | LL_DMA_UPDATE_CTR2 | LL_DMA_UPDATE_CBR1 | LL_DMA_UPDATE_CSAR | LL_DMA_UPDATE_CDAR | LL_DMA_UPDATE_CTR3 | LL_DMA_UPDATE_CBR2 | LL_DMA_UPDATE_CLLR);
+  NodeConfig.NodeType = LL_DMA_GPDMA_LINEAR_NODE;
+  LL_DMA_CreateLinkNode(&NodeConfig, &Node_GPDMA1_Channel3);
+
+  LL_DMA_ConnectLinkNode(&Node_GPDMA1_Channel3, LL_DMA_CLLR_OFFSET5, &Node_GPDMA1_Channel3, LL_DMA_CLLR_OFFSET5);
+
+  /* Next function call is commented because it will not compile as is. The Node structure address has to be cast to an unsigned int (uint32_t)pNode_DMAxCHy */
+  /*
+
+  */
+  LL_DMA_SetLinkedListBaseAddr(GPDMA1, LL_DMA_CHANNEL_3, (uint32_t)&Node_GPDMA1_Channel3);
+
+  DMA_InitLinkedListStruct.Priority = LL_DMA_LOW_PRIORITY_LOW_WEIGHT;
+  DMA_InitLinkedListStruct.LinkStepMode = LL_DMA_LSM_FULL_EXECUTION;
+  DMA_InitLinkedListStruct.LinkAllocatedPort = LL_DMA_LINK_ALLOCATED_PORT1;
+  DMA_InitLinkedListStruct.TransferEventMode = LL_DMA_TCEM_BLK_TRANSFER;
+  LL_DMA_List_Init(GPDMA1, LL_DMA_CHANNEL_3, &DMA_InitLinkedListStruct);
+
+  /* GPDMA1_REQUEST_USART2_TX Init */
+  DMA_InitStruct.SrcAddress = 0x00000000U;
+  DMA_InitStruct.DestAddress = 0x00000000U;
+  DMA_InitStruct.Direction = LL_DMA_DIRECTION_MEMORY_TO_PERIPH;
+  DMA_InitStruct.BlkHWRequest = LL_DMA_HWREQUEST_SINGLEBURST;
+  DMA_InitStruct.DataAlignment = LL_DMA_DATA_ALIGN_ZEROPADD;
+  DMA_InitStruct.SrcBurstLength = 1;
+  DMA_InitStruct.DestBurstLength = 1;
+  DMA_InitStruct.SrcDataWidth = LL_DMA_SRC_DATAWIDTH_BYTE;
+  DMA_InitStruct.DestDataWidth = LL_DMA_DEST_DATAWIDTH_BYTE;
+  DMA_InitStruct.SrcIncMode = LL_DMA_SRC_INCREMENT;
+  DMA_InitStruct.DestIncMode = LL_DMA_DEST_FIXED;
+  DMA_InitStruct.Priority = LL_DMA_LOW_PRIORITY_LOW_WEIGHT;
+  DMA_InitStruct.BlkDataLength = 0x00000000U;
+  DMA_InitStruct.TriggerMode = LL_DMA_TRIGM_BLK_TRANSFER;
+  DMA_InitStruct.TriggerPolarity = LL_DMA_TRIG_POLARITY_MASKED;
+  DMA_InitStruct.TriggerSelection = 0x00000000U;
+  DMA_InitStruct.Request = LL_GPDMA1_REQUEST_USART2_TX;
+  DMA_InitStruct.TransferEventMode = LL_DMA_TCEM_BLK_TRANSFER;
+  DMA_InitStruct.Mode = LL_DMA_NORMAL;
+  DMA_InitStruct.SrcAllocatedPort = LL_DMA_SRC_ALLOCATED_PORT1;
+  DMA_InitStruct.DestAllocatedPort = LL_DMA_DEST_ALLOCATED_PORT0;
+  DMA_InitStruct.LinkAllocatedPort = LL_DMA_LINK_ALLOCATED_PORT1;
+  DMA_InitStruct.LinkStepMode = LL_DMA_LSM_FULL_EXECUTION;
+  DMA_InitStruct.LinkedListBaseAddr = 0x00000000U;
+  DMA_InitStruct.LinkedListAddrOffset = 0x00000000U;
+  LL_DMA_Init(GPDMA1, LL_DMA_CHANNEL_2, &DMA_InitStruct);
+
   /* USER CODE BEGIN USART2_Init 1 */
+
+  LL_DMA_ConfigLinkUpdate(GPDMA1, LL_DMA_CHANNEL_3, LL_DMA_UPDATE_CTR1 | LL_DMA_UPDATE_CTR2 |LL_DMA_UPDATE_CBR1 | LL_DMA_UPDATE_CSAR | LL_DMA_UPDATE_CDAR | LL_DMA_UPDATE_CLLR, (uint32_t)&Node_GPDMA1_Channel3);
+  LL_DMA_EnableChannel(GPDMA1, LL_DMA_CHANNEL_3);
+  LL_DMA_SetLinkedListAddrOffset(GPDMA1, LL_DMA_CHANNEL_3, LL_DMA_CLLR_OFFSET5);
+  LL_USART_EnableDMAReq_RX(USART2);
+
+  LL_DMA_SetDestAddress(GPDMA1, LL_DMA_CHANNEL_2, LL_USART_DMA_GetRegAddr(USART2, LL_USART_DMA_REG_DATA_TRANSMIT));
+  LL_USART_EnableDMAReq_TX(USART2);
 
   /* USER CODE END USART2_Init 1 */
   USART_InitStruct.PrescalerValue = LL_USART_PRESCALER_DIV1;
