@@ -28,10 +28,11 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32h5xx_ll_dma.h"
+#include "stm32h5xx_ll_spi.h"
+#include "stm32h5xx_ll_rcc.h"
 #include "stm32h5xx_ll_icache.h"
 #include "stm32h5xx_ll_pwr.h"
 #include "stm32h5xx_ll_crs.h"
-#include "stm32h5xx_ll_rcc.h"
 #include "stm32h5xx_ll_bus.h"
 #include "stm32h5xx_ll_system.h"
 #include "stm32h5xx_ll_exti.h"

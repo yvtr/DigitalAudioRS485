@@ -69,6 +69,7 @@ static void MX_TIM2_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_UART5_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_I2S2_Init(void);
 /* USER CODE BEGIN PFP */
 
 
@@ -167,6 +168,7 @@ int main(void)
   MX_USART3_UART_Init();
   MX_UART5_Init();
   MX_USART2_UART_Init();
+  MX_I2S2_Init();
   /* USER CODE BEGIN 2 */
   init_printf(NULL, &uart_putc);
 
@@ -227,6 +229,13 @@ int main(void)
 
       Usart2_DMA_Task(); // handle USART2 DMA rx/tx
       Usart3_DMA_Task(); // handle USART3 DMA rx/tx
+
+      // I2S2 testing
+      if (LL_I2S_IsActiveFlag_TXP(SPI2)) { // if I2S2 TX buffer is empty
+          static uint32_t sample = 0x12345678; // example sample value
+          LL_I2S_TransmitData32(SPI2, sample);
+          sample++;
+      }
 
 
     /* USER CODE END WHILE */
@@ -297,6 +306,22 @@ void SystemClock_Config(void)
   */
 void PeriphCommonClock_Config(void)
 {
+  LL_RCC_PLL2_SetSource(LL_RCC_PLL2SOURCE_HSE);
+  LL_RCC_PLL2_SetVCOInputRange(LL_RCC_PLLINPUTRANGE_8_16);
+  LL_RCC_PLL2_SetVCOOutputRange(LL_RCC_PLLVCORANGE_WIDE);
+  LL_RCC_PLL2_SetM(10);
+  LL_RCC_PLL2_SetN(192);
+  LL_RCC_PLL2_SetP(15);
+  LL_RCC_PLL2_SetQ(12);
+  LL_RCC_PLL2_SetR(2);
+  LL_RCC_PLL2P_Enable();
+  LL_RCC_PLL2_Enable();
+
+   /* Wait till PLL is ready */
+  while(LL_RCC_PLL2_IsReady() != 1)
+  {
+  }
+
   LL_RCC_PLL3_SetSource(LL_RCC_PLL3SOURCE_HSE);
   LL_RCC_PLL3_SetVCOInputRange(LL_RCC_PLLINPUTRANGE_8_16);
   LL_RCC_PLL3_SetVCOOutputRange(LL_RCC_PLLVCORANGE_WIDE);
@@ -342,6 +367,70 @@ static void MX_GPDMA1_Init(void)
   /* USER CODE BEGIN GPDMA1_Init 2 */
 
   /* USER CODE END GPDMA1_Init 2 */
+
+}
+
+/**
+  * @brief I2S2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2S2_Init(void)
+{
+
+  /* USER CODE BEGIN I2S2_Init 0 */
+
+  /* USER CODE END I2S2_Init 0 */
+
+  LL_I2S_InitTypeDef I2S_InitStruct = {0};
+
+  LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  LL_RCC_SetSPIClockSource(LL_RCC_SPI2_CLKSOURCE_PLL2P);
+
+  /* Peripheral clock enable */
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_SPI2);
+
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOC);
+  LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOB);
+  /**I2S2 GPIO Configuration
+  PC2   ------> I2S2_SDI
+  PB12   ------> I2S2_WS
+  PB13   ------> I2S2_CK
+  PB15   ------> I2S2_SDO
+  */
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_2;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_MEDIUM;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  GPIO_InitStruct.Alternate = LL_GPIO_AF_5;
+  LL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_12|LL_GPIO_PIN_13|LL_GPIO_PIN_15;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_MEDIUM;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  GPIO_InitStruct.Alternate = LL_GPIO_AF_5;
+  LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /* USER CODE BEGIN I2S2_Init 1 */
+
+  /* USER CODE END I2S2_Init 1 */
+  I2S_InitStruct.Mode = LL_I2S_MODE_MASTER_FULL_DUPLEX;
+  I2S_InitStruct.Standard = LL_I2S_STANDARD_PHILIPS;
+  I2S_InitStruct.DataFormat = LL_I2S_DATAFORMAT_32B;
+  I2S_InitStruct.MCLKOutput = LL_I2S_MCLK_OUTPUT_DISABLE;
+  I2S_InitStruct.AudioFreq = 32000;
+  I2S_InitStruct.ClockPolarity = LL_I2S_POLARITY_LOW;
+  LL_I2S_Init(SPI2, &I2S_InitStruct);
+  /* USER CODE BEGIN I2S2_Init 2 */
+
+  LL_I2S_Enable(SPI2);
+  LL_I2S_StartTransfer(SPI2);
+
+  /* USER CODE END I2S2_Init 2 */
 
 }
 
