@@ -111,21 +111,25 @@ void uart_putc (void* p, char c) {
 
 
 void ProcessUsart2RxData(const uint8_t* data, uint16_t len) {
+#if 0
    printf("USART2 RX(%u): ", len);
    for (uint16_t i = 0; i < len; i++) {
       printf("%c", data[i]);
    }
    printf("\n");
    Delay_us(500); // simulate long processing time
+#endif
 }
 
 void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
+#if 0
    printf("USART3 RX(%u): ", len);
    for (uint16_t i = 0; i < len; i++) {
       printf("%c", data[i]);
    }
    printf("\n");
    Delay_us(500); // simulate long processing time
+#endif
 }
 
 /* USER CODE END 0 */
