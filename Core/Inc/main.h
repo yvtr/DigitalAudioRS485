@@ -80,6 +80,8 @@ void Error_Handler(void);
 #define SHR_CLK_GPIO_Port GPIOC
 #define SHR_STR_Pin LL_GPIO_PIN_15
 #define SHR_STR_GPIO_Port GPIOC
+#define CODEC_RST_Pin LL_GPIO_PIN_0
+#define CODEC_RST_GPIO_Port GPIOA
 #define LD2_Pin LL_GPIO_PIN_11
 #define LD2_GPIO_Port GPIOC
 #define SHR_DOUT_DISP_Pin LL_GPIO_PIN_8
@@ -129,7 +131,8 @@ static inline void SHRSTR_HI()      { LL_GPIO_SetOutputPin(   SHR_STR_GPIO_Port,
 static inline void SHRSTR_LO()      { LL_GPIO_ResetOutputPin( SHR_STR_GPIO_Port, 		SHR_STR_Pin); }
 static inline void SHRDIN_HI()      { LL_GPIO_SetOutputPin(   SHR_DOUT_DISP_GPIO_Port, SHR_DOUT_DISP_Pin); }
 static inline void SHRDIN_LO()      { LL_GPIO_ResetOutputPin( SHR_DOUT_DISP_GPIO_Port, SHR_DOUT_DISP_Pin); }
-
+static inline void CODEC_RST_HI()   { LL_GPIO_SetOutputPin(   CODEC_RST_GPIO_Port, 	   CODEC_RST_Pin); }
+static inline void CODEC_RST_LO()   { LL_GPIO_ResetOutputPin( CODEC_RST_GPIO_Port, 	   CODEC_RST_Pin); }
 
 /* USER CODE END Private defines */
 

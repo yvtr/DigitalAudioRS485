@@ -185,6 +185,12 @@ int main(void)
   MX_I2S2_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+
+  CODEC_RST_LO();    // Reset the audio codec via HW reset pin
+  __NOP();
+  __NOP();
+  CODEC_RST_HI();
+
   init_printf(NULL, &uart_putc);
 
   LL_TIM_GenerateEvent_UPDATE(TIM2);
@@ -1063,6 +1069,9 @@ static void MX_GPIO_Init(void)
   LL_GPIO_ResetOutputPin(SHR_DOUT_DISP_GPIO_Port, SHR_DOUT_DISP_Pin);
 
   /**/
+  LL_GPIO_SetOutputPin(CODEC_RST_GPIO_Port, CODEC_RST_Pin);
+
+  /**/
   LL_GPIO_SetOutputPin(LD2_GPIO_Port, LD2_Pin);
 
   /**/
@@ -1072,6 +1081,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = CODEC_RST_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_OPENDRAIN;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_UP;
+  LL_GPIO_Init(CODEC_RST_GPIO_Port, &GPIO_InitStruct);
 
   /**/
   GPIO_InitStruct.Pin = SHR_DOUT_DISP_Pin;
