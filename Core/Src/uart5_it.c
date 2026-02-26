@@ -76,10 +76,9 @@ void UART5_IRQHandler(void) {
          rd = (rd + 1) & UART5_TXBUF_MASK;               // new read index
          LL_USART_TransmitData8(UART5, Uart5TxBuf[rd]);  // send data byte
          Uart5TxRdIdx = rd;                              // Store new index
+      }else {                                 				// data buffer empty
+         LL_USART_DisableIT_TXE_TXFNF(UART5);            // INT disable
       }
-   }
-   if (Uart5TxWrIdx == Uart5TxRdIdx) {                   // data buffer empty
-      LL_USART_DisableIT_TXE(UART5);                     // INT disable
    }
 }
 

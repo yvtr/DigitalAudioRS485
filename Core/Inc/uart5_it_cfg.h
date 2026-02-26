@@ -5,7 +5,7 @@
 
 
 #define  UART5_RXBUF_SIZE          1024
-#define  UART5_TXBUF_SIZE          1024
+#define  UART5_TXBUF_SIZE          8192
 
 
 
