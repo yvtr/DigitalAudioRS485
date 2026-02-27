@@ -26,6 +26,7 @@
 
 #include "disp7seg.h"
 #include "printf.h"
+#include "tlv320aic3104_ctrl.h"
 #include "usart2_dma.h"
 #include "usart3_dma.h"
 #include "uart5_it.h"
@@ -132,6 +133,23 @@ void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
 #endif
 }
 
+/***************************************************************************//**
+* @brief   TLV320AIC3204 codec init with basic config for stereo playing (DAC)
+*//****************************************************************************/
+void TLV320_AIC3204_Init() {
+   TlvWriteReg(CODEC_A, TLV_PAGE_0,   3, 0x10);
+   TlvWriteReg(CODEC_A, TLV_PAGE_0,   7, 0x0A);
+   TlvWriteReg(CODEC_A, TLV_PAGE_0,   9, 0x10);
+   TlvWriteReg(CODEC_A, TLV_PAGE_0,  47, 0x80);
+   TlvWriteReg(CODEC_A, TLV_PAGE_0,  51, 0x09);
+   TlvWriteReg(CODEC_A, TLV_PAGE_0,  43, 0x00);
+   TlvWriteReg(CODEC_A, TLV_PAGE_0,  37, 0xD0);
+   TlvWriteReg(CODEC_A, TLV_PAGE_0,  44, 0x00);
+   TlvWriteReg(CODEC_A, TLV_PAGE_0,  64, 0x80);
+   TlvWriteReg(CODEC_A, TLV_PAGE_0,  65, 0x09);
+   TlvWriteReg(CODEC_A, TLV_PAGE_0,  38, 0x0C);
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -213,6 +231,9 @@ int main(void)
   Usart2_DMA_Init(ProcessUsart2RxData);
   Usart3_DMA_Init(ProcessUsart3RxData);
   Uart5_Init();
+
+  TLV320_AIC3204_Init();
+
   printf("Hello printf\n");
 
   /* USER CODE END 2 */
