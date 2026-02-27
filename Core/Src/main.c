@@ -133,6 +133,26 @@ void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
 #endif
 }
 
+
+/***************************************************************************//**
+* @brief  List specified registers of TLV320AIC3204 codec for debugging
+*//****************************************************************************/
+void TLV320_AIC3204_DumpRegs(void) {
+   printf("TLV320_AIC3204: Dumping registers...\n");
+
+   CODEC_SELECT    codec = CODEC_A;
+   TLV_PAGE_SELECT page = TLV_PAGE_0;
+   uint8_t         reg_list[] = { 0,2,3,4,5,6,7,8,9,10,11,47,51,43,37,44,64,65,38 };
+
+   for (size_t i = 0; i < ARRAY_COUNT(reg_list); i++) {
+      uint8_t reg = reg_list[i];
+      int16_t val = TlvReadReg(codec, page, reg);
+      printf("Reg %2u: 0x%02X (%d) \n", reg, val, val);
+   }
+
+   printf("TLV320_AIC3204: Dump done\n");
+}
+
 /***************************************************************************//**
 * @brief   TLV320AIC3204 codec init with basic config for stereo playing (DAC)
 *//****************************************************************************/
@@ -271,6 +291,10 @@ int main(void)
       if (ch != -1) {  // if data received
          char c = ch;
          DispPutDigit(0, c, 0);
+         if (c == 's') {
+         } else if (c == 'd') {
+            TLV320_AIC3204_DumpRegs();
+         }
       }
 
       Usart2_DMA_Task(); // handle USART2 DMA rx/tx
