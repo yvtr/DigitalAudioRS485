@@ -328,9 +328,9 @@ void PeriphCommonClock_Config(void)
   LL_RCC_PLL2_SetVCOInputRange(LL_RCC_PLLINPUTRANGE_8_16);
   LL_RCC_PLL2_SetVCOOutputRange(LL_RCC_PLLVCORANGE_WIDE);
   LL_RCC_PLL2_SetM(10);
-  LL_RCC_PLL2_SetN(192);
-  LL_RCC_PLL2_SetP(15);
-  LL_RCC_PLL2_SetQ(12);
+  LL_RCC_PLL2_SetN(256);
+  LL_RCC_PLL2_SetP(10);
+  LL_RCC_PLL2_SetQ(10);
   LL_RCC_PLL2_SetR(2);
   LL_RCC_PLL2P_Enable();
   LL_RCC_PLL2_Enable();
@@ -508,6 +508,7 @@ static void MX_I2S2_Init(void)
   PB12   ------> I2S2_WS
   PB13   ------> I2S2_CK
   PB15   ------> I2S2_SDO
+  PC6   ------> I2S2_MCK
   */
   GPIO_InitStruct.Pin = LL_GPIO_PIN_2;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
@@ -524,6 +525,14 @@ static void MX_I2S2_Init(void)
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   GPIO_InitStruct.Alternate = LL_GPIO_AF_5;
   LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  GPIO_InitStruct.Pin = LL_GPIO_PIN_6;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_ALTERNATE;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_HIGH;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  GPIO_InitStruct.Alternate = LL_GPIO_AF_5;
+  LL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /* I2S2 DMA Init */
 
@@ -576,7 +585,7 @@ static void MX_I2S2_Init(void)
   I2S_InitStruct.Mode = LL_I2S_MODE_MASTER_FULL_DUPLEX;
   I2S_InitStruct.Standard = LL_I2S_STANDARD_PHILIPS;
   I2S_InitStruct.DataFormat = LL_I2S_DATAFORMAT_32B;
-  I2S_InitStruct.MCLKOutput = LL_I2S_MCLK_OUTPUT_DISABLE;
+  I2S_InitStruct.MCLKOutput = LL_I2S_MCLK_OUTPUT_ENABLE;
   I2S_InitStruct.AudioFreq = 32000;
   I2S_InitStruct.ClockPolarity = LL_I2S_POLARITY_LOW;
   LL_I2S_Init(SPI2, &I2S_InitStruct);
