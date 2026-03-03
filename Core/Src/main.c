@@ -26,6 +26,7 @@
 
 #include "disp7seg.h"
 #include "printf.h"
+#include "sound_de.h"
 #include "tlv320aic3104_ctrl.h"
 #include "usart2_dma.h"
 #include "usart3_dma.h"
@@ -202,6 +203,49 @@ void TLV320_AIC3204_Init() {
    TlvWriteReg(CODEC_A, TLV_PAGE_0,  72, 0x01);
 }
 
+static uint32_t sound_read_index = 0;
+
+void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count) {
+   for (uint32_t i = 0; i < sample_count; i++) {
+      int8_t s = 0;
+      if (sound_read_index < Sound_DE_len) {
+         s = Sound_DE[sound_read_index++];
+      }
+      int32_t frame = ((int32_t) s) << 24;   // 8-bit PCM in MSB
+      uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
+      buf[pos + 0] = frame/4;   // Left
+      buf[pos + 1] = frame/4;   // Right
+   }
+}
+
+
+void Audio_Task(void) {
+   static uint32_t old_sample_index = 0;
+   // DMA pointer --> Word-Index
+   uint32_t dma_ptr = 2048 - LL_DMA_GetBlkDataLength(GPDMA2, LL_DMA_CHANNEL_0);
+   uint32_t sample_index = dma_ptr / 8; // Word = 4 bytes * 2 channels = 8 bytes per sample
+
+   if (sample_index != old_sample_index) {
+      uint32_t free_samples;
+      if (sample_index > old_sample_index) {
+         free_samples = sample_index - old_sample_index;         // normal case: DMA is in between old and new index
+         Fill_I2S_Buffer(I2S2TxDmaBuf[0], old_sample_index, free_samples);
+      } else {
+         free_samples = I2S2_TXDMA_BUF_SAMPLE_CNT - old_sample_index;         // Wrap-around
+         Fill_I2S_Buffer(I2S2TxDmaBuf[0], old_sample_index, free_samples); // first the rest until end of buffer
+         if (sample_index > 0) {
+            Fill_I2S_Buffer(I2S2TxDmaBuf[0], 0, sample_index);
+         }
+      }
+
+      old_sample_index = sample_index;
+   }
+   //printf("dma_ptr:%u dma_word_index:%u sample_index:%u\n", dma_ptr, dma_word_index, sample_index);
+}
+
+
+
+
 /* USER CODE END 0 */
 
 /**
@@ -320,11 +364,15 @@ int main(void)
          DispPutDigit(3, ' ', dot);
       }
 
+      static uint8_t AudioRun = 0;
       int16_t ch = Uart5_GetByte();
       if (ch != -1) {  // if data received
          char c = ch;
          DispPutDigit(0, c, 0);
          if (c == 's') {
+         } else if (c == ' ') {
+            AudioRun = 1;
+            sound_read_index = 0;
          } else if (c == 'd') {
             TLV320_AIC3204_DumpRegs();
          }
@@ -332,6 +380,9 @@ int main(void)
 
       Usart2_DMA_Task(); // handle USART2 DMA rx/tx
       Usart3_DMA_Task(); // handle USART3 DMA rx/tx
+      if (AudioRun) {
+         Audio_Task();      // handle audio data feeding to I2S Tx buffer
+      }
 
 
     /* USER CODE END WHILE */
