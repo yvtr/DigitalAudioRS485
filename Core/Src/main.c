@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <ctype.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -31,6 +32,7 @@
 #include "usart2_dma.h"
 #include "usart3_dma.h"
 #include "uart5_it.h"
+#include "wavetable.h"
 
 /* USER CODE END Includes */
 
@@ -65,6 +67,9 @@ LL_DMA_LinkNodeTypeDef Node_GPDMA1_Channel1;
 
 uint32_t I2S2RxDmaBuf[I2S2_RXDMA_BUF_SAMPLE_CNT][2] = {0};
 uint32_t I2S2TxDmaBuf[I2S2_TXDMA_BUF_SAMPLE_CNT][2] = {0};
+
+uint8_t ChSel = 0;
+uint8_t Vol = 0;
 
 /* USER CODE END PV */
 
@@ -207,15 +212,35 @@ void TLV320_AIC3204_Init() {
    TlvWriteReg(CODEC_A, TLV_PAGE_0,  72, 0x01);
 }
 
-static uint32_t sound_read_index = 0;
 
 void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count) {
    for (uint32_t i = 0; i < sample_count; i++) {
-      int8_t s = 0;
-      if (sound_read_index < Sound_DE_len) {
-         s = Sound_DE[sound_read_index++];
+      int16_t pcmsample = 0;
+      switch (ChSel) {
+         case 0:
+         case 1:
+         case 2: {
+            static uint16_t Phase = 0;
+            pcmsample = Wave_Sin[Phase] / 4;        // sine waveform
+            uint16_t phase_inc = (ChSel == 0) ? 4 : ((ChSel == 1) ? 8 : 16); // different frequency for different channel selection
+            Phase = (Phase + phase_inc) % ARRAY_COUNT(Wave_Sin);
+         }break;
+         case 3:
+         case 4:
+         case 5: {
+            static uint16_t Phase = 0;
+            pcmsample = Wave_Organ[Phase] / 4;        // organ waveform
+            uint16_t phase_inc = (ChSel == 3) ? 4 : ((ChSel == 4) ? 8 : 16); // different frequency for different channel selection
+            Phase = (Phase + phase_inc) % ARRAY_COUNT(Wave_Organ);
+         }break;
+         case 6: {
+            static uint32_t SoundIdx = 0;
+            int8_t s = Sound_DE[SoundIdx++];
+            if (SoundIdx >= ARRAY_COUNT(Sound_DE)) SoundIdx = 0;
+            pcmsample = s << 8;   // 8-bit PCM in MSB
+         }break;
       }
-      int32_t frame = ((int32_t) s) << 24;   // 8-bit PCM in MSB
+      int32_t frame = pcmsample << 16; // convert to 32-bit sample with 16-bit left justified
       uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
       buf[pos + 0] = frame/4;   // Left
       buf[pos + 1] = frame/4;   // Right
@@ -368,29 +393,27 @@ int main(void)
          DispPutDigit(3, ' ', dot);
       }
 
-      static uint8_t AudioRun = 0;
       int16_t ch = Uart5_GetByte();
       if (ch != -1) {  // if data received
          char c = ch;
-         DispPutDigit(0, c, 0);
          if (c == 'a') {
             printf("I2S RX buf:\n");
             for (size_t i = 0; i < I2S2_RXDMA_BUF_SAMPLE_CNT; i++) {
                printf("%d;%d\n", I2S2RxDmaBuf[i][0]/65536, I2S2RxDmaBuf[i][1]/65536);
             }
          } else if (c == ' ') {
-            AudioRun = 1;
-            sound_read_index = 0;
          } else if (c == 'd') {
             TLV320_AIC3204_DumpRegs();
+         }
+         if (isdigit(c)) {
+            ChSel = c - '0';
+            DispPutDigit(0, c, 0);
          }
       }
 
       Usart2_DMA_Task(); // handle USART2 DMA rx/tx
       Usart3_DMA_Task(); // handle USART3 DMA rx/tx
-      if (AudioRun) {
-         Audio_Task();      // handle audio data feeding to I2S Tx buffer
-      }
+      Audio_Task();      // handle audio data feeding to I2S Tx buffer
 
 
     /* USER CODE END WHILE */
