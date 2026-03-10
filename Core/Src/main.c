@@ -272,6 +272,54 @@ void AudioDAC_Task(void) {
    //printf("dma_ptr:%u dma_word_index:%u sample_index:%u\n", dma_ptr, dma_word_index, sample_index);
 }
 
+uint16_t DumpI2SBufCnt = 0;
+void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count) {
+   for (uint32_t i = 0; i < sample_count; i++) {
+      uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
+      int16_t left  = buf[pos + 0] >> 16;   // convert back to 16-bit sample from 32-bit left justified
+      int16_t right = buf[pos + 1] >> 16;   // convert back to 16-bit sample from 32-bit left justified
+      if (DumpI2SBufCnt) {
+         printf("%d;%d\n", left, right);
+         DumpI2SBufCnt--;
+      }
+      static int32_t SumL = 0;
+      static int32_t SumR = 0;
+      SumL += left;
+      SumR += right;
+      static uint32_t PrintDelay = 0;
+      if (++PrintDelay == 32000) {   // print every 32000 samples (approx every 1s at 32kHz sample rate)
+         PrintDelay = 0;
+         printf("M:%d,%d\n", SumL/32000, SumR/32000); // print average level for left and right channel
+         SumL = 0;
+         SumR = 0;
+      }
+   }
+}
+
+void AudioADC_Task(void) {
+   static uint32_t old_sample_index = 0;
+   // DMA pointer --> Word-Index
+   uint32_t dma_ptr = 2048 - LL_DMA_GetBlkDataLength(GPDMA2, LL_DMA_CHANNEL_1);
+   uint32_t sample_index = dma_ptr / 8; // Word = 4 bytes * 2 channels = 8 bytes per sample
+
+   if (sample_index != old_sample_index) {
+      uint32_t free_samples;
+      if (sample_index > old_sample_index) {
+         free_samples = sample_index - old_sample_index;         // normal case: DMA is in between old and new index
+         Proc_I2S_Buffer(I2S2RxDmaBuf[0], old_sample_index, free_samples);
+      } else {
+         free_samples = I2S2_RXDMA_BUF_SAMPLE_CNT - old_sample_index;         // Wrap-around
+         Proc_I2S_Buffer(I2S2RxDmaBuf[0], old_sample_index, free_samples); // first the rest until end of buffer
+         if (sample_index > 0) {
+            Proc_I2S_Buffer(I2S2RxDmaBuf[0], 0, sample_index);
+         }
+      }
+
+      old_sample_index = sample_index;
+   }
+   //printf("dma_ptr:%u dma_word_index:%u sample_index:%u\n", dma_ptr, dma_word_index, sample_index);
+}
+
 
 
 
@@ -402,6 +450,7 @@ int main(void)
                printf("%d;%d\n", I2S2RxDmaBuf[i][0]/65536, I2S2RxDmaBuf[i][1]/65536);
             }
          } else if (c == ' ') {
+            DumpI2SBufCnt = 512; // dump next 512 samples from I2S buffer in Proc_I2S_Buffer function
          } else if (c == 'd') {
             TLV320_AIC3204_DumpRegs();
          }
@@ -414,6 +463,7 @@ int main(void)
       Usart2_DMA_Task(); // handle USART2 DMA rx/tx
       Usart3_DMA_Task(); // handle USART3 DMA rx/tx
       AudioDAC_Task();      // handle audio data feeding to I2S Tx buffer
+      AudioADC_Task();      // handle audio data processing from I2S Rx buffer
 
 
     /* USER CODE END WHILE */
