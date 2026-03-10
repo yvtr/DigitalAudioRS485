@@ -248,7 +248,7 @@ void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
 }
 
 
-void Audio_Task(void) {
+void AudioDAC_Task(void) {
    static uint32_t old_sample_index = 0;
    // DMA pointer --> Word-Index
    uint32_t dma_ptr = 2048 - LL_DMA_GetBlkDataLength(GPDMA2, LL_DMA_CHANNEL_0);
@@ -413,7 +413,7 @@ int main(void)
 
       Usart2_DMA_Task(); // handle USART2 DMA rx/tx
       Usart3_DMA_Task(); // handle USART3 DMA rx/tx
-      Audio_Task();      // handle audio data feeding to I2S Tx buffer
+      AudioDAC_Task();      // handle audio data feeding to I2S Tx buffer
 
 
     /* USER CODE END WHILE */
