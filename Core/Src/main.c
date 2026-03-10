@@ -444,6 +444,7 @@ int main(void)
       int16_t ch = Uart5_GetByte();
       if (ch != -1) {  // if data received
          char c = ch;
+         static uint8_t PGA = 64;
          if (c == 'a') {
             printf("I2S RX buf:\n");
             for (size_t i = 0; i < I2S2_RXDMA_BUF_SAMPLE_CNT; i++) {
@@ -453,6 +454,22 @@ int main(void)
             DumpI2SBufCnt = 512; // dump next 512 samples from I2S buffer in Proc_I2S_Buffer function
          } else if (c == 'd') {
             TLV320_AIC3204_DumpRegs();
+         }else if (c == 'u') {
+            if (PGA < 127-8) {
+               PGA += 8;
+               TlvWriteReg(CODEC_A, TLV_PAGE_0, 15, PGA);  // PGA_L
+               TlvWriteReg(CODEC_A, TLV_PAGE_0, 16, PGA);  // PGA_R
+               printf("PGA: %u\n", PGA);
+            }
+         }else if (c == 'j') {
+            if (PGA >= 8) {
+               PGA -= 8;
+               TlvWriteReg(CODEC_A, TLV_PAGE_0, 15, PGA);  // PGA_L
+               TlvWriteReg(CODEC_A, TLV_PAGE_0, 16, PGA);  // PGA_R
+               printf("PGA: %u\n", PGA);
+            }
+         }else if (c == 'f') {
+            TlvWriteReg(CODEC_A, TLV_PAGE_0, 12, 0xF0);  // Enable ADC high-pass filter
          }
          if (isdigit(c)) {
             ChSel = c - '0';
