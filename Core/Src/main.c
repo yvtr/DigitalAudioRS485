@@ -68,6 +68,16 @@ LL_DMA_LinkNodeTypeDef Node_GPDMA1_Channel1;
 uint32_t I2S2RxDmaBuf[I2S2_RXDMA_BUF_SAMPLE_CNT][2] = {0};
 uint32_t I2S2TxDmaBuf[I2S2_TXDMA_BUF_SAMPLE_CNT][2] = {0};
 
+
+#define AUDIO_TX_CHAN_CNT           2     // Audio channel count for sending on RS485 bus
+#define AUDIO_BUF_SAMPLE_CNT        1024  // Audio buffer size in samples (per channel)
+int16_t  AudioChanBuf[AUDIO_BUF_SAMPLE_CNT];   // Audio sample buffer for each channel, filled by audio ADC task and consumed by RS485 bus task. Each sample is 16-bit signed integer.
+
+uint16_t AudioWrPos = 0;   // Write position in audio buffer (in samples)
+uint16_t AudioRdPos = 0;   // Read position in audio buffer (in samples)
+uint16_t AudioDatCnt = 0;  // Number of valid audio samples in buffer (per channel), updated by producer (audio ADC) and consumer (RS485 bus) tasks
+
+
 uint8_t ChSel = 0;
 uint8_t Vol = 0;
 
@@ -214,8 +224,13 @@ void TLV320_AIC3204_Init() {
 
 
 void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count) {
+   static uint8_t playing = 0;
+   uint_fast8_t doubling = 0;
+   uint_fast8_t dropping = 0;
+
    for (uint32_t i = 0; i < sample_count; i++) {
       int16_t pcmsample = 0;
+
       switch (ChSel) {
          case 0:
          case 1:
@@ -239,11 +254,59 @@ void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
             if (SoundIdx >= ARRAY_COUNT(Sound_DE)) SoundIdx = 0;
             pcmsample = s << 8;   // 8-bit PCM in MSB
          }break;
+         case 7: {
+            if (AudioDatCnt < (AUDIO_BUF_SAMPLE_CNT * 1 / 4)) {    // too few samples in input buffer
+               if (doubling == 0) doubling = 10;
+            }
+            if (playing) {
+               if (AudioDatCnt == 0) {
+                  pcmsample = 0;
+                  playing = 0;
+                  printf("x");
+               } else {
+                  int16_t d = AudioChanBuf[AudioRdPos];  // read audio sample
+                  pcmsample = d;
+                  AudioDatCnt--;
+                  AudioRdPos++;
+                  if (AudioRdPos >= AUDIO_BUF_SAMPLE_CNT) AudioRdPos = 0;
+               }
+            } else {    // Buffering (wait..)
+               pcmsample = 0;
+               if (AudioDatCnt > (AUDIO_BUF_SAMPLE_CNT / 2)) {
+                  playing = 1;
+                  printf("w");
+               }
+            }
+            if (AudioDatCnt > (AUDIO_BUF_SAMPLE_CNT * 3 / 4)) { // too many samples in input buffer
+               if (dropping == 0) dropping = 10;
+            }
+         }break;
       }
       int32_t frame = pcmsample << 16; // convert to 32-bit sample with 16-bit left justified
       uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
       buf[pos + 0] = frame/4;   // Left
       buf[pos + 1] = frame/4;   // Right
+
+      if (doubling == 10) {
+         if (i<sample_count-1) {
+            int32_t frame = pcmsample << 16; // convert to 32-bit sample with 16-bit left justified
+            uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
+            buf[pos + 0] = frame/4;   // Left (duplicate sample)
+            buf[pos + 1] = frame/4;   // Right
+            i++;
+            if (playing) printf("+");
+         }
+      }
+      if (doubling) doubling--;
+
+      if (dropping == 5) {
+         AudioDatCnt--;
+         AudioRdPos++;  // drop sample (no output for this sample)
+         if (AudioRdPos >= AUDIO_BUF_SAMPLE_CNT) AudioRdPos = 0;
+         if (playing) printf("-");
+      }
+      if (dropping) dropping--;
+
    }
 }
 
@@ -278,6 +341,13 @@ void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
       uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
       int16_t left  = buf[pos + 0] >> 16;   // convert back to 16-bit sample from 32-bit left justified
       int16_t right = buf[pos + 1] >> 16;   // convert back to 16-bit sample from 32-bit left justified
+      int16_t sample = right;
+      if (AudioDatCnt < AUDIO_BUF_SAMPLE_CNT-1) {
+         AudioDatCnt++;
+         AudioWrPos++; // increment position
+         if (AudioWrPos >= AUDIO_BUF_SAMPLE_CNT) AudioWrPos = 0;
+         AudioChanBuf[AudioWrPos] = sample;     // store audio sample
+      }
       if (DumpI2SBufCnt) {
          printf("%d;%d\n", left, right);
          DumpI2SBufCnt--;
