@@ -70,7 +70,7 @@ uint32_t I2S2TxDmaBuf[I2S2_TXDMA_BUF_SAMPLE_CNT][2] = {0};
 
 
 #define AUDIO_TX_CHAN_CNT           2     // Audio channel count for sending on RS485 bus
-#define AUDIO_BUF_SAMPLE_CNT        1024  // Audio buffer size in samples (per channel)
+#define AUDIO_BUF_SAMPLE_CNT        256   // Audio buffer size in samples (per channel)
 int16_t  AudioChanBuf[AUDIO_BUF_SAMPLE_CNT];   // Audio sample buffer for each channel, filled by audio ADC task and consumed by RS485 bus task. Each sample is 16-bit signed integer.
 
 uint16_t AudioWrPos = 0;   // Write position in audio buffer (in samples)
@@ -233,12 +233,16 @@ void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
 
       switch (ChSel) {
          case 0:
-         case 1:
-         case 2: {
-            static uint16_t Phase = 0;
-            pcmsample = Wave_Sin[Phase] / 4;        // sine waveform
-            uint16_t phase_inc = (ChSel == 0) ? 4 : ((ChSel == 1) ? 8 : 16); // different frequency for different channel selection
-            Phase = (Phase + phase_inc) % ARRAY_COUNT(Wave_Sin);
+         case 1: {
+            static uint32_t Phase = 0;
+            static uint32_t PhaseInc = 4UL << 14;  // phase increment in 8.8 fixed point (4 means 4 samples per cycle, i.e. 1kHz at 32kHz sample rate)
+            static int16_t  IncDir = 1;            // phase increment direction for modulation: -1 or +1
+            pcmsample = Wave_Sin[Phase >> 14];     // sine waveform
+            pcmsample = pcmsample / 4;             // reduce amplitude
+            Phase = (Phase + PhaseInc) % (ARRAY_COUNT(Wave_Sin) << 14); // phase accumulator with wrap-around
+            if (ChSel) PhaseInc += IncDir;            // modulate frequency by changing phase increment
+            if (PhaseInc < ( 4UL << 14)) IncDir =  1; // minimum frequency limit (4 samples per cycle)
+            if (PhaseInc > (16UL << 14)) IncDir = -1;
          }break;
          case 3:
          case 4:
@@ -254,7 +258,8 @@ void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
             if (SoundIdx >= ARRAY_COUNT(Sound_DE)) SoundIdx = 0;
             pcmsample = s << 8;   // 8-bit PCM in MSB
          }break;
-         case 7: {
+         case 7:
+         case 8: {
             if (AudioDatCnt < (AUDIO_BUF_SAMPLE_CNT * 1 / 4)) {    // too few samples in input buffer
                if (doubling == 0) doubling = 10;
             }
@@ -341,7 +346,7 @@ void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
       uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
       int16_t left  = buf[pos + 0] >> 16;   // convert back to 16-bit sample from 32-bit left justified
       int16_t right = buf[pos + 1] >> 16;   // convert back to 16-bit sample from 32-bit left justified
-      int16_t sample = right;
+      int16_t sample = (ChSel == 7) ? left : right;
       if (AudioDatCnt < AUDIO_BUF_SAMPLE_CNT-1) {
          AudioDatCnt++;
          AudioWrPos++; // increment position
