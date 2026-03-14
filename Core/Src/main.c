@@ -131,27 +131,34 @@ void uart_putc (void* p, char c) {
    Uart5_PutByte(c);
 }
 
-
+/***************************************************************************//**
+* @brief Process received data from USART2 (DMA rx callback)
+*//****************************************************************************/
 void ProcessUsart2RxData(const uint8_t* data, uint16_t len) {
-#if 0
-   printf("USART2 RX(%u): ", len);
    for (uint16_t i = 0; i < len; i++) {
-      printf("%c", data[i]);
+      if (data[i] == 127) {                  // trigger value for testing: if received byte is 127 on USART2
+         uint8_t d[128];
+         for (size_t j = 0; j < 128; j++) {
+            d[j] = j+128;                    // send back 128 bytes of data (128,129,...255)
+         }
+         Usart2_TxBufWrite(d, 128, 1);       // send on USART2
+      }
    }
-   printf("\n");
-   Delay_us(500); // simulate long processing time
-#endif
 }
 
+/***************************************************************************//**
+* @brief Process received data from USART3 (DMA rx callback)
+*//****************************************************************************/
 void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
-#if 0
-   printf("USART3 RX(%u): ", len);
    for (uint16_t i = 0; i < len; i++) {
-      printf("%c", data[i]);
+      if (data[i] == 255) {                  // trigger value for testing: if received byte is 255 on USART3
+         uint8_t d[128];
+         for (size_t j = 0; j < 128; j++) {
+            d[j] = j;                        // send back 128 bytes of data (0,1,...127)
+         }
+         Usart3_TxBufWrite(d, 128, 1);       // send on USART3
+      }
    }
-   printf("\n");
-   Delay_us(500); // simulate long processing time
-#endif
 }
 
 
@@ -364,7 +371,7 @@ void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
       static uint32_t PrintDelay = 0;
       if (++PrintDelay == 32000) {   // print every 32000 samples (approx every 1s at 32kHz sample rate)
          PrintDelay = 0;
-         printf("M:%d,%d\n", SumL/32000, SumR/32000); // print average level for left and right channel
+         //printf("M:%d,%d\n", SumL/32000, SumR/32000); // print average level for left and right channel
          SumL = 0;
          SumR = 0;
       }
@@ -501,12 +508,7 @@ int main(void)
          LD2_Toggle();
          static uint8_t cnt = 0;
          DispPutDigit(2, 'A'+cnt, 0);
-         cnt = (cnt + 1) % 16;
-         char s[256];
-         sprintf(s, "%u: Hello DMA World! This is a long message to test the double buffering mechanism of USART3 Tx DMA.\n", cnt);
-         Usart3_TxBufWrite(s, strlen(s), cnt&0x04); // write data and request flush
-         sprintf(s, "%u: Message from USART2 DMA.\n", cnt);
-         Usart2_TxBufWrite(s, strlen(s), !(cnt&0x04));
+         cnt = (cnt + 1) % 8;
       }
 
       static uint32_t Tick100msRef = 0;
@@ -526,7 +528,8 @@ int main(void)
                printf("%d;%d\n", I2S2RxDmaBuf[i][0]/65536, I2S2RxDmaBuf[i][1]/65536);
             }
          } else if (c == ' ') {
-            DumpI2SBufCnt = 512; // dump next 512 samples from I2S buffer in Proc_I2S_Buffer function
+            uint8_t d = 255;
+            Usart2_TxBufWrite(&d, 1, 1);  // send trigger byte on USART2 to start ping-pong test
          } else if (c == 'd') {
             TLV320_AIC3204_DumpRegs();
          }else if (c == 'u') {
@@ -1320,7 +1323,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   USART_InitStruct.PrescalerValue = LL_USART_PRESCALER_DIV1;
-  USART_InitStruct.BaudRate = 115200;
+  USART_InitStruct.BaudRate = 5000000;
   USART_InitStruct.DataWidth = LL_USART_DATAWIDTH_8B;
   USART_InitStruct.StopBits = LL_USART_STOPBITS_1;
   USART_InitStruct.Parity = LL_USART_PARITY_NONE;
@@ -1468,7 +1471,7 @@ static void MX_USART3_UART_Init(void)
 
   /* USER CODE END USART3_Init 1 */
   USART_InitStruct.PrescalerValue = LL_USART_PRESCALER_DIV1;
-  USART_InitStruct.BaudRate = 115200;
+  USART_InitStruct.BaudRate = 5000000;
   USART_InitStruct.DataWidth = LL_USART_DATAWIDTH_8B;
   USART_InitStruct.StopBits = LL_USART_STOPBITS_1;
   USART_InitStruct.Parity = LL_USART_PARITY_NONE;
