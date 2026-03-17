@@ -56,6 +56,8 @@
 
 LL_DMA_LinkNodeTypeDef Node_GPDMA2_Channel1;
 LL_DMA_LinkNodeTypeDef Node_GPDMA2_Channel0;
+LL_DMA_LinkNodeTypeDef Node_GPDMA2_Channel3;
+LL_DMA_LinkNodeTypeDef Node_GPDMA2_Channel2;
 
 LL_DMA_LinkNodeTypeDef Node_GPDMA1_Channel3;
 LL_DMA_LinkNodeTypeDef Node_GPDMA1_Channel1;
@@ -67,6 +69,12 @@ LL_DMA_LinkNodeTypeDef Node_GPDMA1_Channel1;
 
 uint32_t I2S2RxDmaBuf[I2S2_RXDMA_BUF_SAMPLE_CNT][2] = {0};
 uint32_t I2S2TxDmaBuf[I2S2_TXDMA_BUF_SAMPLE_CNT][2] = {0};
+
+#define I2S3_RXDMA_BUF_SAMPLE_CNT   256
+#define I2S3_TXDMA_BUF_SAMPLE_CNT   256
+
+uint32_t I2S3RxDmaBuf[I2S3_RXDMA_BUF_SAMPLE_CNT][2] = {0};
+uint32_t I2S3TxDmaBuf[I2S3_TXDMA_BUF_SAMPLE_CNT][2] = {0};
 
 
 #define AUDIO_TX_CHAN_CNT           2     // Audio channel count for sending on RS485 bus
@@ -445,6 +453,10 @@ int main(void)
       int32_t b = INT32_MAX / 2 * sin(4 * 3.14159265358979323846 * i / I2S2_TXDMA_BUF_SAMPLE_CNT); // sine wave at 2x frequency
       I2S2TxDmaBuf[i][0] = a; // left channel sample
       I2S2TxDmaBuf[i][1] = b; // right channel sample
+
+      // I2S3 (Codec-B)
+      I2S3TxDmaBuf[i][0] = a; // left channel sample
+      I2S3TxDmaBuf[i][1] = b; // right channel sample
    }
 
   /* USER CODE END SysInit */
@@ -960,11 +972,18 @@ static void MX_I2S3_Init(void)
 
   /* USER CODE BEGIN I2S3_Init 0 */
 
+   // WARNING
+   // Remove the second redefinition of NodeConfig after Cube MX code generation.
+   LL_DMA_InitNodeTypeDef NodeConfig = {0};
+
+
+
   /* USER CODE END I2S3_Init 0 */
 
   LL_I2S_InitTypeDef I2S_InitStruct = {0};
 
   LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+  LL_DMA_InitLinkedListTypeDef DMA_InitLinkedListStruct = {0};
 
   LL_RCC_SetSPIClockSource(LL_RCC_SPI3_CLKSOURCE_PLL2P);
 
@@ -1021,7 +1040,102 @@ static void MX_I2S3_Init(void)
   GPIO_InitStruct.Alternate = LL_GPIO_AF_7;
   LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /* I2S3 DMA Init */
+
+  /* GPDMA2_REQUEST_SPI3_RX Init */
+  NodeConfig.SrcAddress        = (uint32_t)LL_SPI_DMA_GetRxRegAddr(SPI3);
+  NodeConfig.DestAddress       = (uint32_t)&I2S3RxDmaBuf;
+  NodeConfig.BlkDataLength     = sizeof(I2S3RxDmaBuf);
+
+  NodeConfig.DestAllocatedPort = LL_DMA_DEST_ALLOCATED_PORT1;
+  NodeConfig.DestHWordExchange = LL_DMA_DEST_HALFWORD_PRESERVE;
+  NodeConfig.DestByteExchange = LL_DMA_DEST_BYTE_PRESERVE;
+  NodeConfig.DestBurstLength = 1;
+  NodeConfig.DestIncMode = LL_DMA_DEST_INCREMENT;
+  NodeConfig.DestDataWidth = LL_DMA_DEST_DATAWIDTH_WORD;
+  NodeConfig.SrcAllocatedPort = LL_DMA_SRC_ALLOCATED_PORT0;
+  NodeConfig.SrcByteExchange = LL_DMA_SRC_BYTE_PRESERVE;
+  NodeConfig.DataAlignment = LL_DMA_DATA_ALIGN_ZEROPADD;
+  NodeConfig.SrcBurstLength = 1;
+  NodeConfig.SrcIncMode = LL_DMA_SRC_FIXED;
+  NodeConfig.SrcDataWidth = LL_DMA_SRC_DATAWIDTH_WORD;
+  NodeConfig.TransferEventMode = LL_DMA_TCEM_BLK_TRANSFER;
+  NodeConfig.Mode = LL_DMA_NORMAL;
+  NodeConfig.TriggerPolarity = LL_DMA_TRIG_POLARITY_MASKED;
+  NodeConfig.BlkHWRequest = LL_DMA_HWREQUEST_SINGLEBURST;
+  NodeConfig.Direction = LL_DMA_DIRECTION_PERIPH_TO_MEMORY;
+  NodeConfig.Request = LL_GPDMA2_REQUEST_SPI3_RX;
+  NodeConfig.UpdateRegisters = (LL_DMA_UPDATE_CTR1 | LL_DMA_UPDATE_CTR2 | LL_DMA_UPDATE_CBR1 | LL_DMA_UPDATE_CSAR | LL_DMA_UPDATE_CDAR | LL_DMA_UPDATE_CTR3 | LL_DMA_UPDATE_CBR2 | LL_DMA_UPDATE_CLLR);
+  NodeConfig.NodeType = LL_DMA_GPDMA_LINEAR_NODE;
+  LL_DMA_CreateLinkNode(&NodeConfig, &Node_GPDMA2_Channel3);
+
+  LL_DMA_ConnectLinkNode(&Node_GPDMA2_Channel3, LL_DMA_CLLR_OFFSET5, &Node_GPDMA2_Channel3, LL_DMA_CLLR_OFFSET5);
+
+  /* Next function call is commented because it will not compile as is. The Node structure address has to be cast to an unsigned int (uint32_t)pNode_DMAxCHy */
+  /*
+
+  */
+  LL_DMA_SetLinkedListBaseAddr(GPDMA2, LL_DMA_CHANNEL_3, (uint32_t)&Node_GPDMA2_Channel3);
+
+  DMA_InitLinkedListStruct.Priority = LL_DMA_LOW_PRIORITY_LOW_WEIGHT;
+  DMA_InitLinkedListStruct.LinkStepMode = LL_DMA_LSM_FULL_EXECUTION;
+  DMA_InitLinkedListStruct.LinkAllocatedPort = LL_DMA_LINK_ALLOCATED_PORT1;
+  DMA_InitLinkedListStruct.TransferEventMode = LL_DMA_TCEM_BLK_TRANSFER;
+  LL_DMA_List_Init(GPDMA2, LL_DMA_CHANNEL_3, &DMA_InitLinkedListStruct);
+
+  /* GPDMA2_REQUEST_SPI3_TX Init */
+  NodeConfig.SrcAddress        = (uint32_t)&I2S3TxDmaBuf;
+  NodeConfig.DestAddress       = (uint32_t)LL_SPI_DMA_GetTxRegAddr(SPI3);
+  NodeConfig.BlkDataLength     = sizeof(I2S3TxDmaBuf);
+
+  NodeConfig.DestAllocatedPort = LL_DMA_DEST_ALLOCATED_PORT0;
+  NodeConfig.DestHWordExchange = LL_DMA_DEST_HALFWORD_PRESERVE;
+  NodeConfig.DestByteExchange = LL_DMA_DEST_BYTE_PRESERVE;
+  NodeConfig.DestBurstLength = 1;
+  NodeConfig.DestIncMode = LL_DMA_DEST_FIXED;
+  NodeConfig.DestDataWidth = LL_DMA_DEST_DATAWIDTH_WORD;
+  NodeConfig.SrcAllocatedPort = LL_DMA_SRC_ALLOCATED_PORT1;
+  NodeConfig.SrcByteExchange = LL_DMA_SRC_BYTE_PRESERVE;
+  NodeConfig.DataAlignment = LL_DMA_DATA_ALIGN_ZEROPADD;
+  NodeConfig.SrcBurstLength = 1;
+  NodeConfig.SrcIncMode = LL_DMA_SRC_INCREMENT;
+  NodeConfig.SrcDataWidth = LL_DMA_SRC_DATAWIDTH_WORD;
+  NodeConfig.TransferEventMode = LL_DMA_TCEM_BLK_TRANSFER;
+  NodeConfig.Mode = LL_DMA_NORMAL;
+  NodeConfig.TriggerPolarity = LL_DMA_TRIG_POLARITY_MASKED;
+  NodeConfig.BlkHWRequest = LL_DMA_HWREQUEST_SINGLEBURST;
+  NodeConfig.Direction = LL_DMA_DIRECTION_MEMORY_TO_PERIPH;
+  NodeConfig.Request = LL_GPDMA2_REQUEST_SPI3_TX;
+  NodeConfig.UpdateRegisters = (LL_DMA_UPDATE_CTR1 | LL_DMA_UPDATE_CTR2 | LL_DMA_UPDATE_CBR1 | LL_DMA_UPDATE_CSAR | LL_DMA_UPDATE_CDAR | LL_DMA_UPDATE_CTR3 | LL_DMA_UPDATE_CBR2 | LL_DMA_UPDATE_CLLR);
+  NodeConfig.NodeType = LL_DMA_GPDMA_LINEAR_NODE;
+  LL_DMA_CreateLinkNode(&NodeConfig, &Node_GPDMA2_Channel2);
+
+  LL_DMA_ConnectLinkNode(&Node_GPDMA2_Channel2, LL_DMA_CLLR_OFFSET5, &Node_GPDMA2_Channel2, LL_DMA_CLLR_OFFSET5);
+
+  /* Next function call is commented because it will not compile as is. The Node structure address has to be cast to an unsigned int (uint32_t)pNode_DMAxCHy */
+  /*
+
+  */
+  LL_DMA_SetLinkedListBaseAddr(GPDMA2, LL_DMA_CHANNEL_2, (uint32_t)&Node_GPDMA2_Channel2);
+
+  DMA_InitLinkedListStruct.Priority = LL_DMA_LOW_PRIORITY_LOW_WEIGHT;
+  DMA_InitLinkedListStruct.LinkStepMode = LL_DMA_LSM_FULL_EXECUTION;
+  DMA_InitLinkedListStruct.LinkAllocatedPort = LL_DMA_LINK_ALLOCATED_PORT1;
+  DMA_InitLinkedListStruct.TransferEventMode = LL_DMA_TCEM_BLK_TRANSFER;
+  LL_DMA_List_Init(GPDMA2, LL_DMA_CHANNEL_2, &DMA_InitLinkedListStruct);
+
   /* USER CODE BEGIN I2S3_Init 1 */
+
+  LL_DMA_ConfigLinkUpdate(GPDMA2, LL_DMA_CHANNEL_3, LL_DMA_UPDATE_CTR1 | LL_DMA_UPDATE_CTR2 |LL_DMA_UPDATE_CBR1 | LL_DMA_UPDATE_CSAR | LL_DMA_UPDATE_CDAR | LL_DMA_UPDATE_CLLR, (uint32_t)&Node_GPDMA2_Channel3);
+  LL_DMA_EnableChannel(GPDMA2, LL_DMA_CHANNEL_3);
+  LL_DMA_SetLinkedListAddrOffset(GPDMA2, LL_DMA_CHANNEL_3, LL_DMA_CLLR_OFFSET5);
+  LL_I2S_EnableDMAReq_RX(SPI3);
+
+  LL_DMA_ConfigLinkUpdate(GPDMA2, LL_DMA_CHANNEL_2, LL_DMA_UPDATE_CTR1 | LL_DMA_UPDATE_CTR2 |LL_DMA_UPDATE_CBR1 | LL_DMA_UPDATE_CSAR | LL_DMA_UPDATE_CDAR | LL_DMA_UPDATE_CLLR, (uint32_t)&Node_GPDMA2_Channel2);
+  LL_DMA_EnableChannel(GPDMA2, LL_DMA_CHANNEL_2);
+  LL_DMA_SetLinkedListAddrOffset(GPDMA2, LL_DMA_CHANNEL_2, LL_DMA_CLLR_OFFSET5);
+  LL_I2S_EnableDMAReq_TX(SPI3);
+
 
   /* USER CODE END I2S3_Init 1 */
   I2S_InitStruct.Mode = LL_I2S_MODE_MASTER_FULL_DUPLEX;
@@ -1032,6 +1146,9 @@ static void MX_I2S3_Init(void)
   I2S_InitStruct.ClockPolarity = LL_I2S_POLARITY_LOW;
   LL_I2S_Init(SPI3, &I2S_InitStruct);
   /* USER CODE BEGIN I2S3_Init 2 */
+
+  LL_I2S_Enable(SPI3);
+  LL_I2S_StartTransfer(SPI3);
 
   /* USER CODE END I2S3_Init 2 */
 
