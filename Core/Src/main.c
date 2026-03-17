@@ -194,48 +194,50 @@ void TLV320_AIC3204_DumpRegs(void) {
 * @brief   TLV320AIC3204 codec init with basic config for stereo playing (DAC)
 *//****************************************************************************/
 void TLV320_AIC3204_Init() {
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,   3, 0x10);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,   7, 0x0A);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,   9, 0x10);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  47, 0x80);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  51, 0x09);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  43, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  37, 0xD0);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  44, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  64, 0x80);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  65, 0x09);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  38, 0x0C);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0, 101, 0x01);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0, 102, 0x02);
+   for (uint8_t codec = CODEC_A; codec <= CODEC_B; codec++) {
+      TlvWriteReg(codec, TLV_PAGE_0,   3, 0x10);
+      TlvWriteReg(codec, TLV_PAGE_0,   7, 0x0A);
+      TlvWriteReg(codec, TLV_PAGE_0,   9, 0x10);
+      TlvWriteReg(codec, TLV_PAGE_0,  47, 0x80);
+      TlvWriteReg(codec, TLV_PAGE_0,  51, 0x09);
+      TlvWriteReg(codec, TLV_PAGE_0,  43, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  37, 0xD0);
+      TlvWriteReg(codec, TLV_PAGE_0,  44, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  64, 0x80);
+      TlvWriteReg(codec, TLV_PAGE_0,  65, 0x09);
+      TlvWriteReg(codec, TLV_PAGE_0,  38, 0x0C);
+      TlvWriteReg(codec, TLV_PAGE_0, 101, 0x01);
+      TlvWriteReg(codec, TLV_PAGE_0, 102, 0x02);
 
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  15, 0x40);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  16, 0x40);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  17, 0xFF);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  18, 0xF0);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  19, 0x0D);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  21, 0x80);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  22, 0xFD);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  24, 0xF8);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  25, 0x80);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  40, 0xC1);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  41, 0x02);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  42, 0x88);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  46, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  49, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  50, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  53, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  54, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  56, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  57, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  58, 0x01);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  60, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  61, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  63, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  67, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  68, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  70, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  71, 0x00);
-   TlvWriteReg(CODEC_A, TLV_PAGE_0,  72, 0x01);
+      TlvWriteReg(codec, TLV_PAGE_0,  15, 0x40);
+      TlvWriteReg(codec, TLV_PAGE_0,  16, 0x40);
+      TlvWriteReg(codec, TLV_PAGE_0,  17, 0xFF);
+      TlvWriteReg(codec, TLV_PAGE_0,  18, 0xF0);
+      TlvWriteReg(codec, TLV_PAGE_0,  19, 0x0D);
+      TlvWriteReg(codec, TLV_PAGE_0,  21, 0x80);
+      TlvWriteReg(codec, TLV_PAGE_0,  22, 0xFD);
+      TlvWriteReg(codec, TLV_PAGE_0,  24, 0xF8);
+      TlvWriteReg(codec, TLV_PAGE_0,  25, 0x80);
+      TlvWriteReg(codec, TLV_PAGE_0,  40, 0xC1);
+      TlvWriteReg(codec, TLV_PAGE_0,  41, 0x02);
+      TlvWriteReg(codec, TLV_PAGE_0,  42, 0x88);
+      TlvWriteReg(codec, TLV_PAGE_0,  46, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  49, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  50, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  53, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  54, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  56, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  57, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  58, 0x01);
+      TlvWriteReg(codec, TLV_PAGE_0,  60, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  61, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  63, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  67, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  68, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  70, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  71, 0x00);
+      TlvWriteReg(codec, TLV_PAGE_0,  72, 0x01);
+   }
 }
 
 
