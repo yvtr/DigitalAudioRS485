@@ -39,6 +39,16 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef struct {
+   const DMA_TypeDef* dma;       // GPDMA instance (GPDMA1 or GPDMA2)
+   uint32_t    dmaChannel;       // DMA channel used for this audio DAC
+   uint32_t*   dmaBuf;           // DMA buffer for audio samples (32-bit words, left justified 16-bit samples in upper half, stereo interleaved)
+   uint32_t    dmaBufSizeBytes;  // Size of DMA buffer in bytes
+   uint32_t    dmaBufSampleCnt;  // Number of audio samples (per channel) in DMA buffer (dmaBufSizeBytes / 4 / 2)
+   uint32_t    PrevSampleIdx;    // Previous sample index processed in DMA buffer, used to detect new samples for processing
+   uint8_t     AudioChSel;       // Audio channel selection by user for this DAC
+} AudioDac;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -76,6 +86,9 @@ uint32_t I2S2TxDmaBuf[I2S2_TXDMA_BUF_SAMPLE_CNT][2] = {0};
 uint32_t I2S3RxDmaBuf[I2S3_RXDMA_BUF_SAMPLE_CNT][2] = {0};
 uint32_t I2S3TxDmaBuf[I2S3_TXDMA_BUF_SAMPLE_CNT][2] = {0};
 
+AudioDac AudioDac_A = {GPDMA2, LL_DMA_CHANNEL_0, (uint32_t*)I2S2TxDmaBuf, sizeof(I2S2TxDmaBuf), I2S2_TXDMA_BUF_SAMPLE_CNT, 0, 3};
+AudioDac AudioDac_B = {GPDMA2, LL_DMA_CHANNEL_2, (uint32_t*)I2S3TxDmaBuf, sizeof(I2S3TxDmaBuf), I2S3_TXDMA_BUF_SAMPLE_CNT, 0, 4};
+
 
 #define AUDIO_TX_CHAN_CNT           2     // Audio channel count for sending on RS485 bus
 #define AUDIO_BUF_SAMPLE_CNT        256   // Audio buffer size in samples (per channel)
@@ -86,7 +99,6 @@ uint16_t AudioRdPos = 0;   // Read position in audio buffer (in samples)
 uint16_t AudioDatCnt = 0;  // Number of valid audio samples in buffer (per channel), updated by producer (audio ADC) and consumer (RS485 bus) tasks
 
 
-uint8_t ChSel = 0;
 uint8_t Vol = 0;
 
 /* USER CODE END PV */
@@ -241,7 +253,7 @@ void TLV320_AIC3204_Init() {
 }
 
 
-void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count) {
+void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count) {
    static uint8_t playing = 0;
    uint_fast8_t doubling = 0;
    uint_fast8_t dropping = 0;
@@ -249,7 +261,7 @@ void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
    for (uint32_t i = 0; i < sample_count; i++) {
       int16_t pcmsample = 0;
 
-      switch (ChSel) {
+      switch (dac->AudioChSel) {
          case 0:
          case 1: {
             static uint32_t Phase = 0;
@@ -263,7 +275,7 @@ void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
             pcmsample = pcm1 + ((pcm2 - pcm1) * frac >> 14); // linear interpolation
             pcmsample = pcmsample / 2;             // reduce amplitude
             Phase = (Phase + PhaseInc) % (ARRAY_COUNT(Wave_Sin) << 14); // phase accumulator with wrap-around
-            if (ChSel) PhaseInc += IncDir;            // Chsel: 0=fixed freq, 1=sweep up and down
+            if (dac->AudioChSel) PhaseInc += IncDir;  // Chsel: 0=fixed freq, 1=sweep up and down
             if (PhaseInc < ( 4UL << 14)) IncDir =  1; // minimum frequency reached, change direction to up
             if (PhaseInc > (16UL << 14)) IncDir = -1; // maximum frequency reached, change direction to down
          }break;
@@ -272,7 +284,7 @@ void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
          case 5: {
             static uint16_t Phase = 0;
             pcmsample = Wave_Organ[Phase] / 4;        // organ waveform
-            uint16_t phase_inc = (ChSel == 3) ? 4 : ((ChSel == 4) ? 8 : 16); // different frequency for different channel selection
+            uint16_t phase_inc = (dac->AudioChSel == 3) ? 4 : ((dac->AudioChSel == 4) ? 8 : 16); // different frequency for different channel selection
             Phase = (Phase + phase_inc) % ARRAY_COUNT(Wave_Organ);
          }break;
          case 6: {
@@ -312,15 +324,15 @@ void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
       }
       int32_t frame = pcmsample << 16; // convert to 32-bit sample with 16-bit left justified
       uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
-      buf[pos + 0] = frame/4;   // Left
-      buf[pos + 1] = frame/4;   // Right
+      dac->dmaBuf[pos + 0] = frame/4;   // Left
+      dac->dmaBuf[pos + 1] = frame/4;   // Right
 
       if (doubling == 10) {
          if (i<sample_count-1) {
             int32_t frame = pcmsample << 16; // convert to 32-bit sample with 16-bit left justified
             uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
-            buf[pos + 0] = frame/4;   // Left (duplicate sample)
-            buf[pos + 1] = frame/4;   // Right
+            dac->dmaBuf[pos + 0] = frame/4;   // Left (duplicate sample)
+            dac->dmaBuf[pos + 1] = frame/4;   // Right
             i++;
             if (playing) printf("+");
          }
@@ -338,27 +350,24 @@ void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
    }
 }
 
+void AudioDAC_Task(AudioDac* dac) {
+   uint32_t dma_ptr = dac->dmaBufSizeBytes - LL_DMA_GetBlkDataLength(dac->dma, dac->dmaChannel);
+   uint32_t sample_idx = dma_ptr / 8; // Word = 4 bytes * 2 channels = 8 bytes per sample
 
-void AudioDAC_Task(void) {
-   static uint32_t old_sample_index = 0;
-   // DMA pointer --> Word-Index
-   uint32_t dma_ptr = 2048 - LL_DMA_GetBlkDataLength(GPDMA2, LL_DMA_CHANNEL_0);
-   uint32_t sample_index = dma_ptr / 8; // Word = 4 bytes * 2 channels = 8 bytes per sample
-
-   if (sample_index != old_sample_index) {
+   if (sample_idx != dac->PrevSampleIdx) {
       uint32_t free_samples;
-      if (sample_index > old_sample_index) {
-         free_samples = sample_index - old_sample_index;         // normal case: DMA is in between old and new index
-         Fill_I2S_Buffer(I2S2TxDmaBuf[0], old_sample_index, free_samples);
+      if (sample_idx > dac->PrevSampleIdx) {
+         free_samples = sample_idx - dac->PrevSampleIdx;         // normal case: DMA is in between old and new index
+         Fill_I2S_Buffer(dac, dac->PrevSampleIdx, free_samples);
       } else {
-         free_samples = I2S2_TXDMA_BUF_SAMPLE_CNT - old_sample_index;         // Wrap-around
-         Fill_I2S_Buffer(I2S2TxDmaBuf[0], old_sample_index, free_samples); // first the rest until end of buffer
-         if (sample_index > 0) {
-            Fill_I2S_Buffer(I2S2TxDmaBuf[0], 0, sample_index);
+         free_samples = dac->dmaBufSampleCnt - dac->PrevSampleIdx;   // Wrap-around
+         Fill_I2S_Buffer(dac, dac->PrevSampleIdx, free_samples);     // first the rest until end of buffer
+         if (sample_idx > 0) {
+            Fill_I2S_Buffer(dac, 0, sample_idx);
          }
       }
 
-      old_sample_index = sample_index;
+      dac->PrevSampleIdx = sample_idx;
    }
    //printf("dma_ptr:%u dma_word_index:%u sample_index:%u\n", dma_ptr, dma_word_index, sample_index);
 }
@@ -369,7 +378,7 @@ void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
       uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
       int16_t left  = buf[pos + 0] >> 16;   // convert back to 16-bit sample from 32-bit left justified
       int16_t right = buf[pos + 1] >> 16;   // convert back to 16-bit sample from 32-bit left justified
-      int16_t sample = (ChSel == 7) ? left : right;
+      int16_t sample = (AudioDac_A.AudioChSel == 7) ? left : right;
       if (AudioDatCnt < AUDIO_BUF_SAMPLE_CNT-1) {
          AudioDatCnt++;
          AudioWrPos++; // increment position
@@ -528,15 +537,12 @@ int main(void)
       if (TickChk(&Tick1secRef, 1000)) {  // execute every 1s
          LD2_Toggle();
          static uint8_t cnt = 0;
-         DispPutDigit(2, 'A'+cnt, 0);
+         DispPutDigit(3, ' ', cnt&1);     // dot on/off for testing
          cnt = (cnt + 1) % 8;
       }
 
       static uint32_t Tick100msRef = 0;
       if (TickChk(&Tick100msRef, 100)) {  // execute every 100ms
-         static uint8_t dot = 0;
-         dot ^= 1;   // toggle dot
-         DispPutDigit(3, ' ', dot);
       }
 
       int16_t ch = Uart5_GetByte();
@@ -571,14 +577,19 @@ int main(void)
             TlvWriteReg(CODEC_A, TLV_PAGE_0, 12, 0xF0);  // Enable ADC high-pass filter
          }
          if (isdigit(c)) {
-            ChSel = c - '0';
+            AudioDac_A.AudioChSel = c - '0';
             DispPutDigit(0, c, 0);
+         }
+         if (c >= 'A' && c <= 'I') {
+            AudioDac_B.AudioChSel = c - 'A';
+            DispPutDigit(2, '0' + AudioDac_B.AudioChSel, 0);
          }
       }
 
       Usart2_DMA_Task(); // handle USART2 DMA rx/tx
       Usart3_DMA_Task(); // handle USART3 DMA rx/tx
-      AudioDAC_Task();      // handle audio data feeding to I2S Tx buffer
+      AudioDAC_Task(&AudioDac_A);  // handle audio data processing for Codec-A (I2S2)
+      AudioDAC_Task(&AudioDac_B);  // handle audio data processing for Codec-B (I2S3)
       AudioADC_Task();      // handle audio data processing from I2S Rx buffer
 
 
