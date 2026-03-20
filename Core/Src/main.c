@@ -253,14 +253,19 @@ void Fill_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
          case 0:
          case 1: {
             static uint32_t Phase = 0;
-            static uint32_t PhaseInc = 4UL << 14;  // phase increment in 8.8 fixed point (4 means 4 samples per cycle, i.e. 1kHz at 32kHz sample rate)
+            static uint32_t PhaseInc = 4UL << 14;  // phase increment
             static int16_t  IncDir = 1;            // phase increment direction for modulation: -1 or +1
-            pcmsample = Wave_Sin[Phase >> 14];     // sine waveform
-            pcmsample = pcmsample / 4;             // reduce amplitude
+            uint32_t frac = Phase & 0x3FFF;        // fractional part for interpolation (14 bits)
+            uint16_t idx  = Phase >> 14;           // integer part: array index
+            uint16_t idx2 = (idx + 1) % ARRAY_COUNT(Wave_Sin); // next index for linear interpolation
+            int32_t pcm1 = Wave_Sin[idx];          // sine waveform
+            int32_t pcm2 = Wave_Sin[idx2];         // next sample for interpolation
+            pcmsample = pcm1 + ((pcm2 - pcm1) * frac >> 14); // linear interpolation
+            pcmsample = pcmsample / 2;             // reduce amplitude
             Phase = (Phase + PhaseInc) % (ARRAY_COUNT(Wave_Sin) << 14); // phase accumulator with wrap-around
-            if (ChSel) PhaseInc += IncDir;            // modulate frequency by changing phase increment
-            if (PhaseInc < ( 4UL << 14)) IncDir =  1; // minimum frequency limit (4 samples per cycle)
-            if (PhaseInc > (16UL << 14)) IncDir = -1;
+            if (ChSel) PhaseInc += IncDir;            // Chsel: 0=fixed freq, 1=sweep up and down
+            if (PhaseInc < ( 4UL << 14)) IncDir =  1; // minimum frequency reached, change direction to up
+            if (PhaseInc > (16UL << 14)) IncDir = -1; // maximum frequency reached, change direction to down
          }break;
          case 3:
          case 4:
