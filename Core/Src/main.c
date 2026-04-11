@@ -47,6 +47,11 @@ typedef struct {
    uint32_t    dmaBufSampleCnt;  // Number of audio samples (per channel) in DMA buffer (dmaBufSizeBytes / 4 / 2)
    uint32_t    PrevSampleIdx;    // Previous sample index processed in DMA buffer, used to detect new samples for processing
    uint8_t     AudioChSel;       // Audio channel selection by user for this DAC
+
+   uint32_t    Phase;
+   uint32_t    PhaseInc;         // phase increment
+   int16_t     IncDir;           // phase increment direction for modulation: -1 or +1
+
 } AudioDac;
 
 /* USER CODE END PTD */
@@ -86,8 +91,8 @@ uint32_t I2S2TxDmaBuf[I2S2_TXDMA_BUF_SAMPLE_CNT][2] = {0};
 uint32_t I2S3RxDmaBuf[I2S3_RXDMA_BUF_SAMPLE_CNT][2] = {0};
 uint32_t I2S3TxDmaBuf[I2S3_TXDMA_BUF_SAMPLE_CNT][2] = {0};
 
-AudioDac AudioDac_A = {GPDMA2, LL_DMA_CHANNEL_0, (uint32_t*)I2S2TxDmaBuf, sizeof(I2S2TxDmaBuf), I2S2_TXDMA_BUF_SAMPLE_CNT, 0, 3};
-AudioDac AudioDac_B = {GPDMA2, LL_DMA_CHANNEL_2, (uint32_t*)I2S3TxDmaBuf, sizeof(I2S3TxDmaBuf), I2S3_TXDMA_BUF_SAMPLE_CNT, 0, 4};
+AudioDac AudioDac_A = {GPDMA2, LL_DMA_CHANNEL_0, (uint32_t*)I2S2TxDmaBuf, sizeof(I2S2TxDmaBuf), I2S2_TXDMA_BUF_SAMPLE_CNT, 0, 3, 0, (4UL << 14), 1};
+AudioDac AudioDac_B = {GPDMA2, LL_DMA_CHANNEL_2, (uint32_t*)I2S3TxDmaBuf, sizeof(I2S3TxDmaBuf), I2S3_TXDMA_BUF_SAMPLE_CNT, 0, 4, 0, (4UL << 14), 1};
 
 
 #define AUDIO_TX_CHAN_CNT           2     // Audio channel count for sending on RS485 bus
@@ -264,33 +269,35 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
       switch (dac->AudioChSel) {
          case 0:
          case 1: {
-            static uint32_t Phase = 0;
-            static uint32_t PhaseInc = 4UL << 14;  // phase increment
-            static int16_t  IncDir = 1;            // phase increment direction for modulation: -1 or +1
-            uint32_t frac = Phase & 0x3FFF;        // fractional part for interpolation (14 bits)
-            uint16_t idx  = Phase >> 14;           // integer part: array index
+            uint32_t frac = dac->Phase & 0x3FFF;        // fractional part for interpolation (14 bits)
+            uint16_t idx  = dac->Phase >> 14;           // integer part: array index
             uint16_t idx2 = (idx + 1) % ARRAY_COUNT(Wave_Sin); // next index for linear interpolation
             int32_t pcm1 = Wave_Sin[idx];          // sine waveform
             int32_t pcm2 = Wave_Sin[idx2];         // next sample for interpolation
             pcmsample = pcm1 + ((pcm2 - pcm1) * frac >> 14); // linear interpolation
             pcmsample = pcmsample / 2;             // reduce amplitude
-            Phase = (Phase + PhaseInc) % (ARRAY_COUNT(Wave_Sin) << 14); // phase accumulator with wrap-around
-            if (dac->AudioChSel) PhaseInc += IncDir;  // Chsel: 0=fixed freq, 1=sweep up and down
-            if (PhaseInc < ( 4UL << 14)) IncDir =  1; // minimum frequency reached, change direction to up
-            if (PhaseInc > (16UL << 14)) IncDir = -1; // maximum frequency reached, change direction to down
+            dac->Phase = (dac->Phase + dac->PhaseInc) % (ARRAY_COUNT(Wave_Sin) << 14); // phase accumulator with wrap-around
+            if (dac->AudioChSel) dac->PhaseInc += dac->IncDir;  // Chsel: 0=fixed freq, 1=sweep up and down
+            if (dac->PhaseInc < ( 4UL << 14)) dac->IncDir =  1; // minimum frequency reached, change direction to up
+            if (dac->PhaseInc > (16UL << 14)) dac->IncDir = -1; // maximum frequency reached, change direction to down
          }break;
          case 3:
-         case 4:
-         case 5: {
-            static uint16_t Phase = 0;
-            pcmsample = Wave_Organ[Phase] / 4;        // organ waveform
-            uint16_t phase_inc = (dac->AudioChSel == 3) ? 4 : ((dac->AudioChSel == 4) ? 8 : 16); // different frequency for different channel selection
-            Phase = (Phase + phase_inc) % ARRAY_COUNT(Wave_Organ);
+         case 4: {
+            uint32_t frac = dac->Phase & 0x3FFF;        // fractional part for interpolation (14 bits)
+            uint16_t idx  = dac->Phase >> 14;           // integer part: array index
+            uint16_t idx2 = (idx + 1) % ARRAY_COUNT(Wave_Organ); // next index for linear interpolation
+            int32_t pcm1 = Wave_Organ[idx];          // sine waveform
+            int32_t pcm2 = Wave_Organ[idx2];         // next sample for interpolation
+            pcmsample = pcm1 + ((pcm2 - pcm1) * frac >> 14); // linear interpolation
+            pcmsample = pcmsample / 2;             // reduce amplitude
+            dac->Phase = (dac->Phase + dac->PhaseInc) % (ARRAY_COUNT(Wave_Organ) << 14); // phase accumulator with wrap-around
+            if (dac->AudioChSel == 3) dac->PhaseInc += dac->IncDir;  // Chsel: 3=fixed freq, 4=sweep up and down
+            if (dac->PhaseInc < ( 4UL << 14)) dac->IncDir =  1; // minimum frequency reached, change direction to up
+            if (dac->PhaseInc > (16UL << 14)) dac->IncDir = -1; // maximum frequency reached, change direction to down
          }break;
          case 6: {
-            static uint32_t SoundIdx = 0;
-            int8_t s = Sound_DE[SoundIdx++];
-            if (SoundIdx >= ARRAY_COUNT(Sound_DE)) SoundIdx = 0;
+            if (dac->Phase >= ARRAY_COUNT(Sound_DE)) dac->Phase = 0;
+            int8_t s = Sound_DE[dac->Phase++];
             pcmsample = s << 8;   // 8-bit PCM in MSB
          }break;
          case 7:
