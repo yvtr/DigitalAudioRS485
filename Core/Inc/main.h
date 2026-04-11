@@ -146,6 +146,28 @@ static inline void SHRDIN_LO()      { LL_GPIO_ResetOutputPin( SHR_DOUT_DISP_GPIO
 static inline void CODEC_RST_HI()   { LL_GPIO_SetOutputPin(   CODEC_RST_GPIO_Port, 	   CODEC_RST_Pin); }
 static inline void CODEC_RST_LO()   { LL_GPIO_ResetOutputPin( CODEC_RST_GPIO_Port, 	   CODEC_RST_Pin); }
 
+// Keyboard input macros
+// 1 if key pressed, 0 if not pressed
+// bit position corresponds to key number (0-7)
+#define KBDA_LEFT_UP()           (LL_GPIO_IsInputPinSet(KBDA_LEFT_UP_GPIO_Port,    KBDA_LEFT_UP_Pin   ) ? 0 : 0x01)
+#define KBDA_RIGHT_UP()          (LL_GPIO_IsInputPinSet(KBDA_RIGHT_UP_GPIO_Port,   KBDA_RIGHT_UP_Pin  ) ? 0 : 0x02)
+#define KBDA_RIGHT_DOWN()        (LL_GPIO_IsInputPinSet(KBDA_RIGHT_DOWN_GPIO_Port, KBDA_RIGHT_DOWN_Pin) ? 0 : 0x04)
+#define KBDB_RIGHT_UP()          (LL_GPIO_IsInputPinSet(KBDB_RIGHT_UP_GPIO_Port,   KBDB_RIGHT_UP_Pin  ) ? 0 : 0x08)
+#define KBDB_LEFT_UP()           (LL_GPIO_IsInputPinSet(KBDB_LEFT_UP_GPIO_Port,    KBDB_LEFT_UP_Pin   ) ? 0 : 0x10)
+#define KBDB_LEFT_DOWN()         (LL_GPIO_IsInputPinSet(KBDB_LEFT_DOWN_GPIO_Port,  KBDB_LEFT_DOWN_Pin ) ? 0 : 0x20)
+#define KBDA_LEFT_DOWN()         0
+#define KBDB_RIGHT_DOWN()        0
+
+/***************************************************************************//**
+* @brief Read keyboard state, bit position corresponds to key number (0-7)
+* @return Bitmask of pressed keys  (1: pressed, 0: released)
+*//****************************************************************************/
+static inline uint16_t Kbd_ReadState() {
+   return (KBDA_LEFT_UP() | KBDA_LEFT_DOWN() | KBDA_RIGHT_UP() | KBDA_RIGHT_DOWN() |
+           KBDB_LEFT_UP() | KBDB_LEFT_DOWN() | KBDB_RIGHT_UP() | KBDB_RIGHT_DOWN());
+}
+
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

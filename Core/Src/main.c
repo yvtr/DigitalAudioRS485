@@ -434,6 +434,26 @@ void AudioADC_Task(void) {
    //printf("dma_ptr:%u dma_word_index:%u sample_index:%u\n", dma_ptr, dma_word_index, sample_index);
 }
 
+/***************************************************************************//**
+* @brief  Handle keyboard input and update state
+*//****************************************************************************/
+static inline void Kbd_Task(void) {
+   static uint32_t KbdPrev = 0;
+   uint32_t k = Kbd_ReadState();
+   uint32_t pressed =   k & ~KbdPrev;  // newly pressed keys
+   uint32_t released = ~k &  KbdPrev;  // newly released keys
+   for (uint16_t i=0; pressed | released; i++) {
+      if (pressed & 1) {
+         UI_EventProcKbd(i);                    // key pressed
+      }
+      if (released & 1) {
+         UI_EventProcKbd(i + 256);              // key released
+      }
+      pressed >>= 1;
+      released >>= 1;
+   }
+   KbdPrev = k;
+}
 
 
 
@@ -538,6 +558,7 @@ int main(void)
       static uint32_t Tick10msRef = 0;
       if (TickChk(&Tick10msRef, 10)) {  // execute every 10ms
          ShiftReg_Update();
+         Kbd_Task();  // handle keyboard input and update state
       }
 
       static uint32_t Tick1secRef = 0;
