@@ -167,6 +167,10 @@ static inline uint16_t Kbd_ReadState() {
            KBDB_LEFT_UP() | KBDB_LEFT_DOWN() | KBDB_RIGHT_UP() | KBDB_RIGHT_DOWN());
 }
 
+extern void AudioSetChannelA(uint8_t chan);
+extern void AudioSetChannelB(uint8_t chan);
+
+
 
 /* USER CODE END Private defines */
 

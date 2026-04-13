@@ -32,6 +32,7 @@
 #include "usart2_dma.h"
 #include "usart3_dma.h"
 #include "uart5_it.h"
+#include "ui.h"
 #include "wavetable.h"
 
 /* USER CODE END Includes */
@@ -455,6 +456,10 @@ static inline void Kbd_Task(void) {
    KbdPrev = k;
 }
 
+void AudioSetChannelA(uint8_t chan) { AudioDac_A.AudioChSel = chan; }
+void AudioSetChannelB(uint8_t chan) { AudioDac_B.AudioChSel = chan; }
+
+
 
 
 /* USER CODE END 0 */
@@ -548,6 +553,7 @@ int main(void)
   TLV320_AIC3204_Init();
 
   printf("Hello printf\n");
+  UI_Init();
 
   /* USER CODE END 2 */
 
@@ -559,13 +565,14 @@ int main(void)
       if (TickChk(&Tick10msRef, 10)) {  // execute every 10ms
          ShiftReg_Update();
          Kbd_Task();  // handle keyboard input and update state
+         UI_EventProc(EV_UI_TICK_10MS);
       }
 
       static uint32_t Tick1secRef = 0;
       if (TickChk(&Tick1secRef, 1000)) {  // execute every 1s
          LD2_Toggle();
+         UI_EventProc(EV_UI_TICK_1S);
          static uint8_t cnt = 0;
-         DispPutDigit(3, ' ', cnt&1);     // dot on/off for testing
          cnt = (cnt + 1) % 8;
       }
 
@@ -604,14 +611,6 @@ int main(void)
          }else if (c == 'f') {
             TlvWriteReg(CODEC_A, TLV_PAGE_0, 12, 0xF0);  // Enable ADC high-pass filter
          }
-         if (isdigit(c)) {
-            AudioDac_A.AudioChSel = c - '0';
-            DispPutDigit(0, c, 0);
-         }
-         if (c >= 'A' && c <= 'I') {
-            AudioDac_B.AudioChSel = c - 'A';
-            DispPutDigit(2, '0' + AudioDac_B.AudioChSel, 0);
-         }
       }
 
       Usart2_DMA_Task(); // handle USART2 DMA rx/tx
@@ -619,6 +618,7 @@ int main(void)
       AudioDAC_Task(&AudioDac_A);  // handle audio data processing for Codec-A (I2S2)
       AudioDAC_Task(&AudioDac_B);  // handle audio data processing for Codec-B (I2S3)
       AudioADC_Task();      // handle audio data processing from I2S Rx buffer
+      UI_CheckEvent();
 
 
     /* USER CODE END WHILE */
