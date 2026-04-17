@@ -168,8 +168,25 @@ void ProcessUsart2RxData(const uint8_t* data, uint16_t len) {
 
 /***************************************************************************//**
 * @brief Process received data from USART3 (DMA rx callback)
+*
+* Decode audio packets received on USART3 (RS485 bus) and store audio samples
+* in buffer for playback.
+*
+* Packet format [bytes]:
+* [Header1]
+* [Header2]
+* [Channel]
+* [Sample1_L]
+* [Sample1_H]
+* [Sample2_L]
+* [Sample2_H]
+* ...
+* [SampleN_L]
+* [SampleN_H]
+*
 *//****************************************************************************/
 void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
+#if 0
    static uint32_t ByteCnt = 0;
    static uint32_t SampleCnt = 0;
    ByteCnt += len;
@@ -182,6 +199,72 @@ void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
          printf("AudioRx %u ms\n", usTimerGetAbs() / 1000); // Print timestamp every 32k samples (every 1 second at 32kHz sample rate)
       }
    }
+#endif
+
+   #define  DAT_IDX_START1       (-3)
+   #define  DAT_IDX_START2       (DAT_IDX_START1 + 1)
+   #define  DAT_IDX_CHANNEL      (DAT_IDX_START2 + 1)
+   #define  AUDIO_PACKET_SIZE    256
+   #define  AUDIO_CHANNELS       8
+
+   #define  CIN_START1     111
+   #define  CIN_START2     222
+
+   static int16_t DatCnt = DAT_IDX_START1;
+   static uint8_t ChanMatch = 0;
+   static uint8_t LSB = 0;
+
+   uint8_t ovfdiag = 1;
+   for (size_t i=0; i<len; i++) {
+      uint8_t d = data[i];
+      switch (DatCnt) {
+         case DAT_IDX_START1: {
+            if (d == CIN_START1) DatCnt++;
+         }break;
+         case DAT_IDX_START2: {
+            if (d == CIN_START2) DatCnt++;
+            else DatCnt = DAT_IDX_START1;       // reset
+         }break;
+         case DAT_IDX_CHANNEL: {
+            if (d < AUDIO_CHANNELS) {           // channel number range OK
+               ChanMatch = (d == AudioDac_A.AudioChSel) ? 1 : 0; // check channel number
+               DatCnt++;
+               //printf("Ch%u\n", AudioChan);
+            }else {                             // channel number out of range (invalid packet)
+               DatCnt = DAT_IDX_START1;         // reset
+            }
+         }break;
+         default: {
+            if (ChanMatch) {
+               if ((DatCnt & 1) == 0) {   // even index: LSByte
+                  LSB = d;                // store LSByte
+               }else {                    // odd index: MSByte
+                  int16_t sample = ((uint16_t)d << 8) | LSB;   // combine MSByte and LSByte to form signed 16-bit audio sample
+
+                  // Store received audio samples from RS485 to audio buffer
+                  if (AudioDatCnt < AUDIO_BUF_SAMPLE_CNT-1) {
+                     AudioDatCnt++;
+                     AudioWrPos++; // increment position
+                     if (AudioWrPos >= AUDIO_BUF_SAMPLE_CNT) AudioWrPos = 0;  // wrap around if end of buffer reached
+                     AudioChanBuf[AudioWrPos] = sample;     // store audio sample
+                     /*if (PacketDiag) {
+                        PacketDiag--;
+                        static uint32_t LogCnt = 0;
+                        printf("%u;%d\n", LogCnt++, sample);
+                     }*/
+                  }else {
+                     if (ovfdiag) {
+                        ovfdiag = 0;
+                        printf("F");   // overflow
+                     }
+                  }
+               }
+            }
+            if (++DatCnt == AUDIO_PACKET_SIZE) DatCnt = DAT_IDX_START1; // done
+         }break;
+      }
+   }
+
 }
 
 
@@ -264,8 +347,8 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
       int16_t pcmsample = 0;
 
       switch (dac->AudioChSel) {
-         case 0:
-         case 1: {
+         case 1:
+         case 2: {
             uint32_t frac = dac->Phase & 0x3FFF;        // fractional part for interpolation (14 bits)
             uint16_t idx  = dac->Phase >> 14;           // integer part: array index
             uint16_t idx2 = (idx + 1) % ARRAY_COUNT(Wave_Sin); // next index for linear interpolation
@@ -274,7 +357,7 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
             pcmsample = pcm1 + ((pcm2 - pcm1) * frac >> 14); // linear interpolation
             pcmsample = pcmsample / 2;             // reduce amplitude
             dac->Phase = (dac->Phase + dac->PhaseInc) % (ARRAY_COUNT(Wave_Sin) << 14); // phase accumulator with wrap-around
-            if (dac->AudioChSel) dac->PhaseInc += dac->IncDir;  // Chsel: 0=fixed freq, 1=sweep up and down
+            if (dac->AudioChSel == 2) dac->PhaseInc += dac->IncDir;  // Chsel: 1=fixed freq, 2=sweep up and down
             if (dac->PhaseInc < ( 4UL << 14)) dac->IncDir =  1; // minimum frequency reached, change direction to up
             if (dac->PhaseInc > (16UL << 14)) dac->IncDir = -1; // maximum frequency reached, change direction to down
          }break;
@@ -297,19 +380,19 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
             int8_t s = Sound_DE[dac->Phase++];
             pcmsample = s << 8;   // 8-bit PCM in MSB
          }break;
-         case 7:
-         case 8: {
+
+         case 0: {
             if (AudioDatCnt < (AUDIO_BUF_SAMPLE_CNT * 1 / 4)) {    // too few samples in input buffer
                if (doubling == 0) doubling = 10;
             }
             if (playing) {
-               if (AudioDatCnt == 0) {
-                  pcmsample = 0;
-                  playing = 0;
+               if (AudioDatCnt == 0) {    // no samples to play
+                  pcmsample = 0;          // mute output
+                  playing = 0;            // stop playing until buffer is refilled
                   printf("x");
                } else {
                   int16_t d = AudioChanBuf[AudioRdPos];  // read audio sample
-                  pcmsample = d;
+                  pcmsample = d;                         // normal playback
                   AudioDatCnt--;
                   AudioRdPos++;
                   if (AudioRdPos >= AUDIO_BUF_SAMPLE_CNT) AudioRdPos = 0;
@@ -378,18 +461,20 @@ void AudioDAC_Task(AudioDac* dac) {
 
 uint16_t DumpI2SBufCnt = 0;
 void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count) {
+
+   // Create audio packets from received I2S samples and send on USART2 (RS485 bus)
    for (uint32_t i = 0; i < sample_count; i++) {
       uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
       int16_t left  = buf[pos + 0] >> 16;   // convert back to 16-bit sample from 32-bit left justified
       int16_t right = buf[pos + 1] >> 16;   // convert back to 16-bit sample from 32-bit left justified
-      int16_t sample = (AudioDac_A.AudioChSel == 7) ? left : right;
+      int16_t sample = left + right;         // mix two channels
       {
          static uint16_t ByteTxIdx = 0;   // byte index for filling audio packet buffer
          static uint16_t SampleTxIdx = 0; // index for counting audio samples in current packet
          if (SampleTxIdx == 0) {          // start of new packet, fill header
             ByteTxIdx = 0;
-            AudioPacketBuf[ByteTxIdx++] = 111;       // Packet header byte 1
-            AudioPacketBuf[ByteTxIdx++] = 222;       // Packet header byte 2
+            AudioPacketBuf[ByteTxIdx++] = CIN_START1; // Packet header byte 1
+            AudioPacketBuf[ByteTxIdx++] = CIN_START2; // Packet header byte 2
             AudioPacketBuf[ByteTxIdx++] = 0;         // Audio channel number
             #define AUDIO_PACKET_HDR_SIZE    3     // header size in bytes
             #define AUDIO_PACKET_SAMPLE_CNT  128   // number of audio samples in one packet
@@ -404,12 +489,6 @@ void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
             ByteTxIdx = 0;    // reset byte index for next packet
             SampleTxIdx = 0;  // reset sample index for next packet
          }
-      }
-      if (AudioDatCnt < AUDIO_BUF_SAMPLE_CNT-1) {
-         AudioDatCnt++;
-         AudioWrPos++; // increment position
-         if (AudioWrPos >= AUDIO_BUF_SAMPLE_CNT) AudioWrPos = 0;
-         AudioChanBuf[AudioWrPos] = sample;     // store audio sample
       }
 
 #if 0
