@@ -414,7 +414,7 @@ void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
 void AudioADC_Task(void) {
    static uint32_t old_sample_index = 0;
    // DMA pointer --> Word-Index
-   uint32_t dma_ptr = 2048 - LL_DMA_GetBlkDataLength(GPDMA2, LL_DMA_CHANNEL_1);
+   uint32_t dma_ptr = sizeof(I2S2RxDmaBuf) - LL_DMA_GetBlkDataLength(GPDMA2, LL_DMA_CHANNEL_1);
    uint32_t sample_index = dma_ptr / 8; // Word = 4 bytes * 2 channels = 8 bytes per sample
 
    if (sample_index != old_sample_index) {
