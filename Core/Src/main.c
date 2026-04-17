@@ -100,6 +100,8 @@ AudioDac AudioDac_B = {GPDMA2, LL_DMA_CHANNEL_2, (uint32_t*)I2S3TxDmaBuf, sizeof
 #define AUDIO_BUF_SAMPLE_CNT        256   // Audio buffer size in samples (per channel)
 int16_t  AudioChanBuf[AUDIO_BUF_SAMPLE_CNT];   // Audio sample buffer for each channel, filled by audio ADC task and consumed by RS485 bus task. Each sample is 16-bit signed integer.
 
+uint8_t  AudioPacketBuf[2048];  // Buffer for assembling audio packets to send on RS485 bus, size should be enough to hold packet header and audio samples
+
 uint16_t AudioWrPos = 0;   // Write position in audio buffer (in samples)
 uint16_t AudioRdPos = 0;   // Read position in audio buffer (in samples)
 uint16_t AudioDatCnt = 0;  // Number of valid audio samples in buffer (per channel), updated by producer (audio ADC) and consumer (RS485 bus) tasks
@@ -162,28 +164,22 @@ void uart_putc (void* p, char c) {
 * @brief Process received data from USART2 (DMA rx callback)
 *//****************************************************************************/
 void ProcessUsart2RxData(const uint8_t* data, uint16_t len) {
-   for (uint16_t i = 0; i < len; i++) {
-      if (data[i] == 127) {                  // trigger value for testing: if received byte is 127 on USART2
-         uint8_t d[128];
-         for (size_t j = 0; j < 128; j++) {
-            d[j] = j+128;                    // send back 128 bytes of data (128,129,...255)
-         }
-         Usart2_TxBufWrite(d, 128, 1);       // send on USART2
-      }
-   }
 }
 
 /***************************************************************************//**
 * @brief Process received data from USART3 (DMA rx callback)
 *//****************************************************************************/
 void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
-   for (uint16_t i = 0; i < len; i++) {
-      if (data[i] == 255) {                  // trigger value for testing: if received byte is 255 on USART3
-         uint8_t d[128];
-         for (size_t j = 0; j < 128; j++) {
-            d[j] = j;                        // send back 128 bytes of data (0,1,...127)
-         }
-         Usart3_TxBufWrite(d, 128, 1);       // send on USART3
+   static uint32_t ByteCnt = 0;
+   static uint32_t SampleCnt = 0;
+   ByteCnt += len;
+   const uint16_t PacketSize = 3 + 128 * 2;  // Packet header (3 bytes) + 128 samples * 2 bytes per sample
+   if (ByteCnt >= PacketSize) {
+      ByteCnt -= PacketSize;
+      SampleCnt += 128;
+      if (SampleCnt >= 32000) {
+         SampleCnt -= 32000;
+         printf("AudioRx %u ms\n", usTimerGetAbs() / 1000); // Print timestamp every 32k samples (every 1 second at 32kHz sample rate)
       }
    }
 }
@@ -387,12 +383,36 @@ void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
       int16_t left  = buf[pos + 0] >> 16;   // convert back to 16-bit sample from 32-bit left justified
       int16_t right = buf[pos + 1] >> 16;   // convert back to 16-bit sample from 32-bit left justified
       int16_t sample = (AudioDac_A.AudioChSel == 7) ? left : right;
+      {
+         static uint16_t ByteTxIdx = 0;   // byte index for filling audio packet buffer
+         static uint16_t SampleTxIdx = 0; // index for counting audio samples in current packet
+         if (SampleTxIdx == 0) {          // start of new packet, fill header
+            ByteTxIdx = 0;
+            AudioPacketBuf[ByteTxIdx++] = 111;       // Packet header byte 1
+            AudioPacketBuf[ByteTxIdx++] = 222;       // Packet header byte 2
+            AudioPacketBuf[ByteTxIdx++] = 0;         // Audio channel number
+            #define AUDIO_PACKET_HDR_SIZE    3     // header size in bytes
+            #define AUDIO_PACKET_SAMPLE_CNT  128   // number of audio samples in one packet
+         }
+         if (SampleTxIdx < AUDIO_PACKET_SAMPLE_CNT) {
+            AudioPacketBuf[ByteTxIdx++] = sample & 0xFF;   // store low byte of audio sample in packet buffer
+            AudioPacketBuf[ByteTxIdx++] = sample >> 8;     // store high byte of audio sample in packet buffer
+            SampleTxIdx++;
+         }
+         if (SampleTxIdx == AUDIO_PACKET_SAMPLE_CNT) {         // packet is full, send it
+            Usart2_TxBufWrite(AudioPacketBuf, ByteTxIdx, 1);   // write packet to USART2 DMA buffer and flush (start transfer)
+            ByteTxIdx = 0;    // reset byte index for next packet
+            SampleTxIdx = 0;  // reset sample index for next packet
+         }
+      }
       if (AudioDatCnt < AUDIO_BUF_SAMPLE_CNT-1) {
          AudioDatCnt++;
          AudioWrPos++; // increment position
          if (AudioWrPos >= AUDIO_BUF_SAMPLE_CNT) AudioWrPos = 0;
          AudioChanBuf[AudioWrPos] = sample;     // store audio sample
       }
+
+#if 0
       if (DumpI2SBufCnt) {
          printf("%d;%d\n", left, right);
          DumpI2SBufCnt--;
@@ -408,6 +428,7 @@ void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
          SumL = 0;
          SumR = 0;
       }
+#endif
    }
 }
 
