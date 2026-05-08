@@ -40,6 +40,9 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+#define AUDIO_TX_CHAN_CNT           2     // Audio channel count for sending on RS485 bus
+#define AUDIO_BUF_SAMPLE_CNT        256   // Audio buffer size in samples (per channel)
+
 typedef struct {
    const DMA_TypeDef* dma;       // GPDMA instance (GPDMA1 or GPDMA2)
    uint32_t    dmaChannel;       // DMA channel used for this audio DAC
@@ -53,6 +56,11 @@ typedef struct {
    uint32_t    PhaseInc;         // phase increment
    int16_t     IncDir;           // phase increment direction for modulation: -1 or +1
 
+   int16_t  AudioChanBuf[AUDIO_BUF_SAMPLE_CNT];   // Audio sample buffer for each channel, filled by audio ADC task and consumed by RS485 bus task. Each sample is 16-bit signed integer.
+   uint16_t AudioWrPos;   // Write position in audio buffer (in samples)
+   uint16_t AudioRdPos;   // Read position in audio buffer (in samples)
+   uint16_t AudioDatCnt;  // Number of valid audio samples in buffer (per channel)
+   uint8_t  playing;      // flag indicating if audio is currently playing (1) or buffering (0)
 } AudioDac;
 
 /* USER CODE END PTD */
@@ -95,17 +103,8 @@ uint32_t I2S3TxDmaBuf[I2S3_TXDMA_BUF_SAMPLE_CNT][2] = {0};
 AudioDac AudioDac_A = {GPDMA2, LL_DMA_CHANNEL_0, (uint32_t*)I2S2TxDmaBuf, sizeof(I2S2TxDmaBuf), I2S2_TXDMA_BUF_SAMPLE_CNT, 0, 3, 0, (4UL << 14), 1};
 AudioDac AudioDac_B = {GPDMA2, LL_DMA_CHANNEL_2, (uint32_t*)I2S3TxDmaBuf, sizeof(I2S3TxDmaBuf), I2S3_TXDMA_BUF_SAMPLE_CNT, 0, 4, 0, (4UL << 14), 1};
 
-
-#define AUDIO_TX_CHAN_CNT           2     // Audio channel count for sending on RS485 bus
-#define AUDIO_BUF_SAMPLE_CNT        256   // Audio buffer size in samples (per channel)
-int16_t  AudioChanBuf[AUDIO_BUF_SAMPLE_CNT];   // Audio sample buffer for each channel, filled by audio ADC task and consumed by RS485 bus task. Each sample is 16-bit signed integer.
-
 uint8_t  AudioPacketBuf[1024];  // Buffer for assembling audio packets to send on RS485 bus, size should be enough to hold packet header and audio samples
 uint8_t  Audio2PacketBuf[1024];
-
-uint16_t AudioWrPos = 0;   // Write position in audio buffer (in samples)
-uint16_t AudioRdPos = 0;   // Read position in audio buffer (in samples)
-uint16_t AudioDatCnt = 0;  // Number of valid audio samples in buffer (per channel), updated by producer (audio ADC) and consumer (RS485 bus) tasks
 
 
 uint8_t Vol = 0;
@@ -241,7 +240,8 @@ void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
    #define  CIN_START2     222
 
    static int16_t DatCnt = DAT_IDX_START1;
-   static uint8_t ChanMatch = 0;
+   static uint8_t ChanMatchA = 0;
+   static uint8_t ChanMatchB = 0;
    static uint8_t LSB = 0;
 
    uint8_t ovfdiag = 1;
@@ -257,7 +257,8 @@ void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
          }break;
          case DAT_IDX_CHANNEL: {
             if (d < AUDIO_CHANNELS) {           // channel number range OK
-               ChanMatch = (d == AudioDac_A.AudioChSel) ? 1 : 0; // check channel number
+               ChanMatchA = (d == AudioDac_A.AudioChSel) ? 1 : 0; // check channel number
+               ChanMatchB = (d == AudioDac_B.AudioChSel) ? 1 : 0;
                DatCnt++;
                //printf("Ch%u\n", AudioChan);
             }else {                             // channel number out of range (invalid packet)
@@ -265,19 +266,34 @@ void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
             }
          }break;
          default: {
-            if (ChanMatch) {
-               if ((DatCnt & 1) == 0) {   // even index: LSByte
-                  LSB = d;                // store LSByte
-               }else {                    // odd index: MSByte
-                  int16_t sample = ((uint16_t)d << 8) | LSB;   // combine MSByte and LSByte to form signed 16-bit audio sample
-                  //AudioStat(sample, 0);
+            if ((DatCnt & 1) == 0) {   // even index: LSByte
+               LSB = d;                // store LSByte
+            }else {                    // odd index: MSByte
+               int16_t sample = ((uint16_t)d << 8) | LSB;   // combine MSByte and LSByte to form signed 16-bit audio sample
+               //AudioStat(sample, 0);
 
-                  // Store received audio samples from RS485 to audio buffer
-                  if (AudioDatCnt < AUDIO_BUF_SAMPLE_CNT-1) {
-                     AudioDatCnt++;
-                     AudioWrPos++; // increment position
-                     if (AudioWrPos >= AUDIO_BUF_SAMPLE_CNT) AudioWrPos = 0;  // wrap around if end of buffer reached
-                     AudioChanBuf[AudioWrPos] = sample;     // store audio sample
+               // Store received audio samples from RS485 to audio buffer
+               if (ChanMatchA) {
+                  AudioDac* d = &AudioDac_A;
+                  if (d->AudioDatCnt < AUDIO_BUF_SAMPLE_CNT-1) {
+                     d->AudioDatCnt++;
+                     d->AudioWrPos++; // increment position
+                     if (d->AudioWrPos >= AUDIO_BUF_SAMPLE_CNT) d->AudioWrPos = 0;  // wrap around if end of buffer reached
+                     d->AudioChanBuf[d->AudioWrPos] = sample;     // store audio sample
+                  }else {
+                     if (ovfdiag) {
+                        ovfdiag = 0;
+                        printf("f");   // overflow
+                     }
+                  }
+               }
+               if (ChanMatchB) {
+                  AudioDac* d = &AudioDac_B;
+                  if (d->AudioDatCnt < AUDIO_BUF_SAMPLE_CNT-1) {
+                     d->AudioDatCnt++;
+                     d->AudioWrPos++; // increment position
+                     if (d->AudioWrPos >= AUDIO_BUF_SAMPLE_CNT) d->AudioWrPos = 0;  // wrap around if end of buffer reached
+                     d->AudioChanBuf[d->AudioWrPos] = sample;     // store audio sample
                   }else {
                      if (ovfdiag) {
                         ovfdiag = 0;
@@ -365,7 +381,6 @@ void TLV320_AIC3204_Init() {
 
 
 void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count) {
-   static uint8_t playing = 0;
    uint_fast8_t doubling = 0;
    uint_fast8_t dropping = 0;
 
@@ -408,29 +423,29 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
 
          case 1:
          case 0: {
-            if (AudioDatCnt < (AUDIO_BUF_SAMPLE_CNT * 1 / 4)) {    // too few samples in input buffer
+            if (dac->AudioDatCnt < (AUDIO_BUF_SAMPLE_CNT * 1 / 4)) {    // too few samples in input buffer
                if (doubling == 0) doubling = 10;
             }
-            if (playing) {
-               if (AudioDatCnt == 0) {    // no samples to play
+            if (dac->playing) {
+               if (dac->AudioDatCnt == 0) {    // no samples to play
                   pcmsample = 0;          // mute output
-                  playing = 0;            // stop playing until buffer is refilled
+                  dac->playing = 0;       // stop playing until buffer is refilled
                   printf("x");
                } else {
-                  int16_t d = AudioChanBuf[AudioRdPos];  // read audio sample
+                  int16_t d = dac->AudioChanBuf[dac->AudioRdPos];  // read audio sample
                   pcmsample = d;                         // normal playback
-                  AudioDatCnt--;
-                  AudioRdPos++;
-                  if (AudioRdPos >= AUDIO_BUF_SAMPLE_CNT) AudioRdPos = 0;
+                  dac->AudioDatCnt--;
+                  dac->AudioRdPos++;
+                  if (dac->AudioRdPos >= AUDIO_BUF_SAMPLE_CNT) dac->AudioRdPos = 0;
                }
             } else {    // Buffering (wait..)
                pcmsample = 0;
-               if (AudioDatCnt > (AUDIO_BUF_SAMPLE_CNT / 2)) {
-                  playing = 1;
+               if (dac->AudioDatCnt > (AUDIO_BUF_SAMPLE_CNT / 2)) {
+                  dac->playing = 1;
                   printf("w");
                }
             }
-            if (AudioDatCnt > (AUDIO_BUF_SAMPLE_CNT * 3 / 4)) { // too many samples in input buffer
+            if (dac->AudioDatCnt > (AUDIO_BUF_SAMPLE_CNT * 3 / 4)) { // too many samples in input buffer
                if (dropping == 0) dropping = 10;
             }
          }break;
@@ -447,16 +462,16 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
             dac->dmaBuf[pos + 0] = frame/4;   // Left (duplicate sample)
             dac->dmaBuf[pos + 1] = frame/4;   // Right
             i++;
-            if (playing) printf("+");
+            if (dac->playing) printf("+");
          }
       }
       if (doubling) doubling--;
 
       if (dropping == 5) {
-         AudioDatCnt--;
-         AudioRdPos++;  // drop sample (no output for this sample)
-         if (AudioRdPos >= AUDIO_BUF_SAMPLE_CNT) AudioRdPos = 0;
-         if (playing) printf("-");
+         dac->AudioDatCnt--;
+         dac->AudioRdPos++;  // drop sample (no output for this sample)
+         if (dac->AudioRdPos >= AUDIO_BUF_SAMPLE_CNT) dac->AudioRdPos = 0;
+         if (dac->playing) printf("-");
       }
       if (dropping) dropping--;
 
