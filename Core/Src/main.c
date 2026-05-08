@@ -100,7 +100,8 @@ AudioDac AudioDac_B = {GPDMA2, LL_DMA_CHANNEL_2, (uint32_t*)I2S3TxDmaBuf, sizeof
 #define AUDIO_BUF_SAMPLE_CNT        256   // Audio buffer size in samples (per channel)
 int16_t  AudioChanBuf[AUDIO_BUF_SAMPLE_CNT];   // Audio sample buffer for each channel, filled by audio ADC task and consumed by RS485 bus task. Each sample is 16-bit signed integer.
 
-uint8_t  AudioPacketBuf[2048];  // Buffer for assembling audio packets to send on RS485 bus, size should be enough to hold packet header and audio samples
+uint8_t  AudioPacketBuf[1024];  // Buffer for assembling audio packets to send on RS485 bus, size should be enough to hold packet header and audio samples
+uint8_t  Audio2PacketBuf[1024];
 
 uint16_t AudioWrPos = 0;   // Write position in audio buffer (in samples)
 uint16_t AudioRdPos = 0;   // Read position in audio buffer (in samples)
@@ -372,7 +373,6 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
       int16_t pcmsample = 0;
 
       switch (dac->AudioChSel) {
-         case 1:
          case 2: {
             uint32_t frac = dac->Phase & 0x3FFF;        // fractional part for interpolation (14 bits)
             uint16_t idx  = dac->Phase >> 14;           // integer part: array index
@@ -406,6 +406,7 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
             pcmsample = s << 8;   // 8-bit PCM in MSB
          }break;
 
+         case 1:
          case 0: {
             if (AudioDatCnt < (AUDIO_BUF_SAMPLE_CNT * 1 / 4)) {    // too few samples in input buffer
                if (doubling == 0) doubling = 10;
@@ -492,25 +493,33 @@ void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
       uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
       int16_t left  = buf[pos + 0] >> 16;   // convert back to 16-bit sample from 32-bit left justified
       int16_t right = buf[pos + 1] >> 16;   // convert back to 16-bit sample from 32-bit left justified
-      int16_t sample = left + right;         // mix two channels
       {
          static uint16_t ByteTxIdx = 0;   // byte index for filling audio packet buffer
          static uint16_t SampleTxIdx = 0; // index for counting audio samples in current packet
          if (SampleTxIdx == 0) {          // start of new packet, fill header
             ByteTxIdx = 0;
-            AudioPacketBuf[ByteTxIdx++] = CIN_START1; // Packet header byte 1
-            AudioPacketBuf[ByteTxIdx++] = CIN_START2; // Packet header byte 2
-            AudioPacketBuf[ByteTxIdx++] = 0;         // Audio channel number
+            Audio2PacketBuf[ByteTxIdx] = AudioPacketBuf[ByteTxIdx] = CIN_START1; // Packet header byte 1
+            ByteTxIdx++;
+            Audio2PacketBuf[ByteTxIdx] = AudioPacketBuf[ByteTxIdx] = CIN_START2; // Packet header byte 2
+            ByteTxIdx++;
+            AudioPacketBuf[ByteTxIdx] = 0;         // Audio channel number
+            Audio2PacketBuf[ByteTxIdx] = 1;        // Audio channel number
+            ByteTxIdx++;
             #define AUDIO_PACKET_HDR_SIZE    3     // header size in bytes
             #define AUDIO_PACKET_SAMPLE_CNT  128   // number of audio samples in one packet
          }
          if (SampleTxIdx < AUDIO_PACKET_SAMPLE_CNT) {
-            AudioPacketBuf[ByteTxIdx++] = sample & 0xFF;   // store low byte of audio sample in packet buffer
-            AudioPacketBuf[ByteTxIdx++] = sample >> 8;     // store high byte of audio sample in packet buffer
+            AudioPacketBuf[ByteTxIdx] = left & 0xFF;   // store low byte of audio sample in packet buffer
+            Audio2PacketBuf[ByteTxIdx] = right & 0xFF;
+            ByteTxIdx++;
+            AudioPacketBuf[ByteTxIdx] = left >> 8;     // store high byte of audio sample in packet buffer
+            Audio2PacketBuf[ByteTxIdx] = right >> 8;
+            ByteTxIdx++;
             SampleTxIdx++;
          }
          if (SampleTxIdx == AUDIO_PACKET_SAMPLE_CNT) {         // packet is full, send it
-            Usart2_TxBufWrite(AudioPacketBuf, ByteTxIdx, 1);   // write packet to USART2 DMA buffer and flush (start transfer)
+            Usart2_TxBufWrite(AudioPacketBuf, ByteTxIdx, 0);   // write packet to USART2 DMA buffer
+            Usart2_TxBufWrite(Audio2PacketBuf, ByteTxIdx, 1);  // write packet to USART2 DMA buffer and flush (start transfer)
             ByteTxIdx = 0;    // reset byte index for next packet
             SampleTxIdx = 0;  // reset sample index for next packet
          }
