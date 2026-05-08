@@ -161,6 +161,35 @@ void uart_putc (void* p, char c) {
 }
 
 /***************************************************************************//**
+* @brief Audio statistics
+*//****************************************************************************/
+void AudioStat(int16_t left, int16_t right) {
+   static int32_t SumL = 0;
+   static int32_t SumR = 0;
+   static int16_t MinL = 0;
+   static int16_t MaxL = 0;
+   static int16_t MinR = 0;
+   static int16_t MaxR = 0;
+   SumL += left;
+   SumR += right;
+   if (left < MinL) MinL = left;
+   if (left > MaxL) MaxL = left;
+   if (right < MinR) MinR = right;
+   if (right > MaxR) MaxR = right;
+   static uint32_t PrintDelay = 0;
+   if (++PrintDelay == 32000) {   // print every 32000 samples (approx every 1s at 32kHz sample rate)
+      PrintDelay = 0;
+      printf("A:%d,%d L(%d %d) R(%d %d)\n", SumL/32000, SumR/32000, MinL, MaxL, MinR, MaxR);
+      SumL = 0;
+      SumR = 0;
+      MinL = INT16_MAX;
+      MaxL = INT16_MIN;
+      MinR = INT16_MAX;
+      MaxR = INT16_MIN;
+   }
+}
+
+/***************************************************************************//**
 * @brief Process received data from USART2 (DMA rx callback)
 *//****************************************************************************/
 void ProcessUsart2RxData(const uint8_t* data, uint16_t len) {
@@ -240,6 +269,7 @@ void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
                   LSB = d;                // store LSByte
                }else {                    // odd index: MSByte
                   int16_t sample = ((uint16_t)d << 8) | LSB;   // combine MSByte and LSByte to form signed 16-bit audio sample
+                  //AudioStat(sample, 0);
 
                   // Store received audio samples from RS485 to audio buffer
                   if (AudioDatCnt < AUDIO_BUF_SAMPLE_CNT-1) {
@@ -247,11 +277,6 @@ void ProcessUsart3RxData(const uint8_t* data, uint16_t len) {
                      AudioWrPos++; // increment position
                      if (AudioWrPos >= AUDIO_BUF_SAMPLE_CNT) AudioWrPos = 0;  // wrap around if end of buffer reached
                      AudioChanBuf[AudioWrPos] = sample;     // store audio sample
-                     /*if (PacketDiag) {
-                        PacketDiag--;
-                        static uint32_t LogCnt = 0;
-                        printf("%u;%d\n", LogCnt++, sample);
-                     }*/
                   }else {
                      if (ovfdiag) {
                         ovfdiag = 0;
@@ -491,23 +516,11 @@ void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
          }
       }
 
-#if 0
       if (DumpI2SBufCnt) {
          printf("%d;%d\n", left, right);
          DumpI2SBufCnt--;
       }
-      static int32_t SumL = 0;
-      static int32_t SumR = 0;
-      SumL += left;
-      SumR += right;
-      static uint32_t PrintDelay = 0;
-      if (++PrintDelay == 32000) {   // print every 32000 samples (approx every 1s at 32kHz sample rate)
-         PrintDelay = 0;
-         //printf("M:%d,%d\n", SumL/32000, SumR/32000); // print average level for left and right channel
-         SumL = 0;
-         SumR = 0;
-      }
-#endif
+      AudioStat(left, right);
    }
 }
 
