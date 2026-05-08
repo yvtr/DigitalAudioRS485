@@ -103,8 +103,6 @@ uint32_t I2S3TxDmaBuf[I2S3_TXDMA_BUF_SAMPLE_CNT][2] = {0};
 AudioDac AudioDac_A = {GPDMA2, LL_DMA_CHANNEL_0, (uint32_t*)I2S2TxDmaBuf, sizeof(I2S2TxDmaBuf), I2S2_TXDMA_BUF_SAMPLE_CNT, 0, 3, 0, (4UL << 14), 1};
 AudioDac AudioDac_B = {GPDMA2, LL_DMA_CHANNEL_2, (uint32_t*)I2S3TxDmaBuf, sizeof(I2S3TxDmaBuf), I2S3_TXDMA_BUF_SAMPLE_CNT, 0, 4, 0, (4UL << 14), 1};
 
-uint8_t  AudioPacketBuf[1024];  // Buffer for assembling audio packets to send on RS485 bus, size should be enough to hold packet header and audio samples
-uint8_t  Audio2PacketBuf[1024];
 
 
 uint8_t Vol = 0;
@@ -388,7 +386,8 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
       int16_t pcmsample = 0;
 
       switch (dac->AudioChSel) {
-         case 2: {
+         case 5:
+         case 6: {
             uint32_t frac = dac->Phase & 0x3FFF;        // fractional part for interpolation (14 bits)
             uint16_t idx  = dac->Phase >> 14;           // integer part: array index
             uint16_t idx2 = (idx + 1) % ARRAY_COUNT(Wave_Sin); // next index for linear interpolation
@@ -397,11 +396,10 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
             pcmsample = pcm1 + ((pcm2 - pcm1) * frac >> 14); // linear interpolation
             pcmsample = pcmsample / 2;             // reduce amplitude
             dac->Phase = (dac->Phase + dac->PhaseInc) % (ARRAY_COUNT(Wave_Sin) << 14); // phase accumulator with wrap-around
-            if (dac->AudioChSel == 2) dac->PhaseInc += dac->IncDir;  // Chsel: 1=fixed freq, 2=sweep up and down
+            if (dac->AudioChSel == 5) dac->PhaseInc += dac->IncDir;  // Chsel: 6=fixed freq, 5=sweep up and down
             if (dac->PhaseInc < ( 4UL << 14)) dac->IncDir =  1; // minimum frequency reached, change direction to up
             if (dac->PhaseInc > (16UL << 14)) dac->IncDir = -1; // maximum frequency reached, change direction to down
          }break;
-         case 3:
          case 4: {
             uint32_t frac = dac->Phase & 0x3FFF;        // fractional part for interpolation (14 bits)
             uint16_t idx  = dac->Phase >> 14;           // integer part: array index
@@ -415,12 +413,9 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
             if (dac->PhaseInc < ( 4UL << 14)) dac->IncDir =  1; // minimum frequency reached, change direction to up
             if (dac->PhaseInc > (16UL << 14)) dac->IncDir = -1; // maximum frequency reached, change direction to down
          }break;
-         case 6: {
-            if (dac->Phase >= ARRAY_COUNT(Sound_DE)) dac->Phase = 0;
-            int8_t s = Sound_DE[dac->Phase++];
-            pcmsample = s << 8;   // 8-bit PCM in MSB
-         }break;
 
+         case 3:
+         case 2:
          case 1:
          case 0: {
             if (dac->AudioDatCnt < (AUDIO_BUF_SAMPLE_CNT * 1 / 4)) {    // too few samples in input buffer
@@ -502,7 +497,8 @@ void AudioDAC_Task(AudioDac* dac) {
 
 uint16_t DumpI2SBufCnt = 0;
 void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count) {
-
+   enum { BUFCNT = 4 };
+   static uint8_t Buf[BUFCNT][512];
    // Create audio packets from received I2S samples and send on USART2 (RS485 bus)
    for (uint32_t i = 0; i < sample_count; i++) {
       uint32_t pos = (start_sample + i) * 2;  // Stereo: L,R
@@ -511,30 +507,42 @@ void Proc_I2S_Buffer(uint32_t *buf, uint32_t start_sample, uint32_t sample_count
       {
          static uint16_t ByteTxIdx = 0;   // byte index for filling audio packet buffer
          static uint16_t SampleTxIdx = 0; // index for counting audio samples in current packet
+         static uint32_t Phase_DE = 0;
          if (SampleTxIdx == 0) {          // start of new packet, fill header
             ByteTxIdx = 0;
-            Audio2PacketBuf[ByteTxIdx] = AudioPacketBuf[ByteTxIdx] = CIN_START1; // Packet header byte 1
+            for (int b=0; b<BUFCNT; b++) Buf[b][ByteTxIdx] = CIN_START1; // Packet header byte 1
             ByteTxIdx++;
-            Audio2PacketBuf[ByteTxIdx] = AudioPacketBuf[ByteTxIdx] = CIN_START2; // Packet header byte 2
+            for (int b=0; b<BUFCNT; b++) Buf[b][ByteTxIdx] = CIN_START2; // Packet header byte 2
             ByteTxIdx++;
-            AudioPacketBuf[ByteTxIdx] = 0;         // Audio channel number
-            Audio2PacketBuf[ByteTxIdx] = 1;        // Audio channel number
+            for (int b=0; b<BUFCNT; b++) Buf[b][ByteTxIdx] = b;          // channel number
             ByteTxIdx++;
-            #define AUDIO_PACKET_HDR_SIZE    3     // header size in bytes
-            #define AUDIO_PACKET_SAMPLE_CNT  128   // number of audio samples in one packet
          }
+         enum { AUDIO_PACKET_HDR_SIZE   = 3   };   // header size in bytes
+         enum { AUDIO_PACKET_SAMPLE_CNT = 128 };   // number of audio samples in one packet
          if (SampleTxIdx < AUDIO_PACKET_SAMPLE_CNT) {
-            AudioPacketBuf[ByteTxIdx] = left & 0xFF;   // store low byte of audio sample in packet buffer
-            Audio2PacketBuf[ByteTxIdx] = right & 0xFF;
+            if (Phase_DE >= ARRAY_COUNT(Sound_DE)) Phase_DE = 0;
+            int8_t s = Sound_DE[Phase_DE++];
+
+            // Low byte of 16 bit audio sample
+            Buf[0][ByteTxIdx] = left & 0xFF;   // store low byte of audio sample in packet buffer
+            Buf[1][ByteTxIdx] = right & 0xFF;
+            Buf[2][ByteTxIdx] = 0;              // CH2: PCM sound sample (8-bit signed in MSB), LSB is 0
+            Buf[3][ByteTxIdx] = 0;              // CH3: muted
             ByteTxIdx++;
-            AudioPacketBuf[ByteTxIdx] = left >> 8;     // store high byte of audio sample in packet buffer
-            Audio2PacketBuf[ByteTxIdx] = right >> 8;
+
+            // High byte of 16 bit audio sample
+            Buf[0][ByteTxIdx] = left >> 8;     // store high byte of audio sample in packet buffer
+            Buf[1][ByteTxIdx] = right >> 8;
+            Buf[2][ByteTxIdx] = s;             // CH2: PCM sound sample (8-bit signed in MSB)
+            Buf[3][ByteTxIdx] = 0;             // CH3: muted
             ByteTxIdx++;
             SampleTxIdx++;
          }
          if (SampleTxIdx == AUDIO_PACKET_SAMPLE_CNT) {         // packet is full, send it
-            Usart2_TxBufWrite(AudioPacketBuf, ByteTxIdx, 0);   // write packet to USART2 DMA buffer
-            Usart2_TxBufWrite(Audio2PacketBuf, ByteTxIdx, 1);  // write packet to USART2 DMA buffer and flush (start transfer)
+            Usart2_TxBufWrite(Buf[0], ByteTxIdx, 0);   // write packet to USART2 DMA buffer
+            Usart2_TxBufWrite(Buf[1], ByteTxIdx, 0);   // write packet to USART2 DMA buffer
+            Usart2_TxBufWrite(Buf[2], ByteTxIdx, 0);   // write packet to USART2 DMA buffer
+            Usart2_TxBufWrite(Buf[3], ByteTxIdx, 1);   // write packet to USART2 DMA buffer and flush (start transfer)
             ByteTxIdx = 0;    // reset byte index for next packet
             SampleTxIdx = 0;  // reset sample index for next packet
          }
