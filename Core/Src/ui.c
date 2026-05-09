@@ -66,9 +66,18 @@ static void DispPutDigitA(uint8_t pos, char chr, uint8_t dp) {   DispPutDigit(0+
 static void DispPutDigitB(uint8_t pos, char chr, uint8_t dp) {   DispPutDigit(2+pos, chr, dp);  }
 
 static void SetDAC(uint8_t codec, uint8_t vol) {
-   uint32_t vdac = 256 * (uint32_t)vol / 20;
-   if (vdac > 255) vdac = 255;
-   //SetVolume(codec, vdac);
+   int32_t vdac = 80 - 80 * (uint32_t)vol / 16;
+   uint8_t hpout = 0;
+   if (vol > 16) {
+      vdac = 0;                  // DAC volume: max
+      hpout = (vol - 16) * 2;    // +headphone output level (+0..8dB)
+      if (hpout > 9) hpout = 9;  // max possible level: +9dB
+   }
+   if (vol == 0) vdac = 0x80;                // set mute bit if volume is 0
+   TlvWriteReg(codec, TLV_PAGE_0, 43, vdac); // left DAC volume register
+   TlvWriteReg(codec, TLV_PAGE_0, 44, vdac); // right DAC volume register
+   TlvWriteReg(codec, TLV_PAGE_0, 51, (hpout<<4) | 0x09); // HPLOUT Output Level Control Register
+   TlvWriteReg(codec, TLV_PAGE_0, 65, (hpout<<4) | 0x09); // HPROUT Output Level Control Register
 }
 static void AudioSetVolumeA(uint8_t vol) { SetDAC(CODEC_A, vol); }
 static void AudioSetVolumeB(uint8_t vol) { SetDAC(CODEC_B, vol); }
