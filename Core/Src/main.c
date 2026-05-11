@@ -139,9 +139,9 @@ static void MX_SPI1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static inline void LD2_On()     { LL_GPIO_SetOutputPin( LD2_GPIO_Port, LD2_Pin);   }
-static inline void LD2_Off()    { LL_GPIO_ResetOutputPin( LD2_GPIO_Port, LD2_Pin); }
-static inline void LD2_Toggle() { LL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin); }
+static inline void LD2_On()     { LL_GPIO_SetOutputPin(  SHR_DIN_KBD_LED_B_GPIO_Port, SHR_DIN_KBD_LED_B_Pin); }
+static inline void LD2_Off()    { LL_GPIO_ResetOutputPin(SHR_DIN_KBD_LED_B_GPIO_Port, SHR_DIN_KBD_LED_B_Pin); }
+static inline void LD2_Toggle() { LL_GPIO_TogglePin(     SHR_DIN_KBD_LED_B_GPIO_Port, SHR_DIN_KBD_LED_B_Pin); }
 
 /***************************************************************************//**
  * @brief Check if specified time interval has elapsed
@@ -1990,25 +1990,23 @@ static void MX_GPIO_Init(void)
   LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOD);
 
   /**/
-  LL_GPIO_ResetOutputPin(GPIOC, SHR_CLK_Pin|SHR_STR_Pin);
+  LL_GPIO_ResetOutputPin(GPIOC, SHR_CLK_Pin|SHR_STR_Pin|LCDA_CS_Pin|LCDB_CS_Pin);
 
   /**/
-  LL_GPIO_ResetOutputPin(SHR_DOUT_DISP_GPIO_Port, SHR_DOUT_DISP_Pin);
+  LL_GPIO_ResetOutputPin(GPIOB, LCD_RST_Pin|LCD_DC_Pin|SHR_DOUT_DISP_Pin);
 
   /**/
-  LL_GPIO_SetOutputPin(CODEC_RST_GPIO_Port, CODEC_RST_Pin);
+  LL_GPIO_SetOutputPin(GPIOA, CODEC_RST_Pin|SHR_DIN_KBD_LED_B_Pin);
 
   /**/
-  LL_GPIO_SetOutputPin(LD2_GPIO_Port, LD2_Pin);
-
-  /**/
-  GPIO_InitStruct.Pin = KBDA_RIGHT_UP_Pin|KBDA_LEFT_UP_Pin|KBDA_RIGHT_DOWN_Pin;
+  GPIO_InitStruct.Pin = KBDA_RIGHT_UP_Pin|KBDA_LEFT_UP_Pin|KBDA_RIGHT_DOWN_Pin|KBDB_LEFT_UP_Pin
+                          |KBDB_RIGHT_UP_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_UP;
   LL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /**/
-  GPIO_InitStruct.Pin = SHR_CLK_Pin|SHR_STR_Pin|LD2_Pin;
+  GPIO_InitStruct.Pin = SHR_CLK_Pin|SHR_STR_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
@@ -2024,18 +2022,34 @@ static void MX_GPIO_Init(void)
   LL_GPIO_Init(CODEC_RST_GPIO_Port, &GPIO_InitStruct);
 
   /**/
-  GPIO_InitStruct.Pin = KBDB_LEFT_UP_Pin|KBDB_RIGHT_UP_Pin|KBDB_LEFT_DOWN_Pin;
-  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = LL_GPIO_PULL_UP;
-  LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  GPIO_InitStruct.Pin = LCDA_CS_Pin|LCDB_CS_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_MEDIUM;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /**/
-  GPIO_InitStruct.Pin = SHR_DOUT_DISP_Pin;
+  GPIO_InitStruct.Pin = LCD_RST_Pin|LCD_DC_Pin|SHR_DOUT_DISP_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
   GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
   GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
-  LL_GPIO_Init(SHR_DOUT_DISP_GPIO_Port, &GPIO_InitStruct);
+  LL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = SHR_DIN_KBD_LED_B_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
+  GPIO_InitStruct.Speed = LL_GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.OutputType = LL_GPIO_OUTPUT_PUSHPULL;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(SHR_DIN_KBD_LED_B_GPIO_Port, &GPIO_InitStruct);
+
+  /**/
+  GPIO_InitStruct.Pin = KBDB_LEFT_DOWN_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_UP;
+  LL_GPIO_Init(KBDB_LEFT_DOWN_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
