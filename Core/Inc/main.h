@@ -82,18 +82,18 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define KBDA_RIGHT_UP_Pin LL_GPIO_PIN_13
+#define KBDA_RIGHT_UP_GPIO_Port GPIOC
 #define SHR_CLK_Pin LL_GPIO_PIN_14
 #define SHR_CLK_GPIO_Port GPIOC
 #define SHR_STR_Pin LL_GPIO_PIN_15
 #define SHR_STR_GPIO_Port GPIOC
 #define KBDA_LEFT_UP_Pin LL_GPIO_PIN_0
 #define KBDA_LEFT_UP_GPIO_Port GPIOC
+#define KBDA_RIGHT_DOWN_Pin LL_GPIO_PIN_3
+#define KBDA_RIGHT_DOWN_GPIO_Port GPIOC
 #define CODEC_RST_Pin LL_GPIO_PIN_0
 #define CODEC_RST_GPIO_Port GPIOA
-#define KBDA_RIGHT_UP_Pin LL_GPIO_PIN_5
-#define KBDA_RIGHT_UP_GPIO_Port GPIOA
-#define KBDA_RIGHT_DOWN_Pin LL_GPIO_PIN_6
-#define KBDA_RIGHT_DOWN_GPIO_Port GPIOA
 #define KBDB_LEFT_UP_Pin LL_GPIO_PIN_0
 #define KBDB_LEFT_UP_GPIO_Port GPIOB
 #define KBDB_RIGHT_UP_Pin LL_GPIO_PIN_2
