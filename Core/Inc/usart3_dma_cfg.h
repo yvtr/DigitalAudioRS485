@@ -20,8 +20,8 @@
 #include "stm32h5xx_ll_dma.h"
 
 
-#define USART3_RXDMA_BUF_SIZE    2048
-#define USART3_TXDMA_BUF_SIZE    2048
+#define USART3_RXDMA_BUF_SIZE    4096
+#define USART3_TXDMA_BUF_SIZE    4096
 
 #define USART3_GPDMA             GPDMA1
 #define USART3_DMA_TX_CHANNEL    LL_DMA_CHANNEL_0

@@ -20,7 +20,7 @@
 #include "stm32h5xx_ll_dma.h"
 
 
-#define USART2_RXDMA_BUF_SIZE    2048
+#define USART2_RXDMA_BUF_SIZE    4096
 #define USART2_TXDMA_BUF_SIZE    4096
 
 #define USART2_GPDMA             GPDMA1

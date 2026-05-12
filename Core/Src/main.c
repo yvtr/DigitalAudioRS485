@@ -49,7 +49,7 @@
 /* USER CODE BEGIN PTD */
 
 #define AUDIO_TX_CHAN_CNT           2     // Audio channel count for sending on RS485 bus
-#define AUDIO_BUF_SAMPLE_CNT        256   // Audio buffer size in samples (per channel)
+#define AUDIO_BUF_SAMPLE_CNT        512   // Audio buffer size in samples (per channel)
 
 typedef struct {
    const DMA_TypeDef* dma;       // GPDMA instance (GPDMA1 or GPDMA2)
@@ -96,14 +96,14 @@ LL_DMA_LinkNodeTypeDef Node_GPDMA1_Channel1;
 
 /* USER CODE BEGIN PV */
 
-#define I2S2_RXDMA_BUF_SAMPLE_CNT   256
-#define I2S2_TXDMA_BUF_SAMPLE_CNT   256
+#define I2S2_RXDMA_BUF_SAMPLE_CNT   512
+#define I2S2_TXDMA_BUF_SAMPLE_CNT   512
 
 uint32_t I2S2RxDmaBuf[I2S2_RXDMA_BUF_SAMPLE_CNT][2] = {0};
 uint32_t I2S2TxDmaBuf[I2S2_TXDMA_BUF_SAMPLE_CNT][2] = {0};
 
-#define I2S3_RXDMA_BUF_SAMPLE_CNT   256
-#define I2S3_TXDMA_BUF_SAMPLE_CNT   256
+#define I2S3_RXDMA_BUF_SAMPLE_CNT   512
+#define I2S3_TXDMA_BUF_SAMPLE_CNT   512
 
 uint32_t I2S3RxDmaBuf[I2S3_RXDMA_BUF_SAMPLE_CNT][2] = {0};
 uint32_t I2S3TxDmaBuf[I2S3_TXDMA_BUF_SAMPLE_CNT][2] = {0};
@@ -445,7 +445,7 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
          case 2:
          case 1:
          case 0: {
-            if (dac->AudioDatCnt < (AUDIO_BUF_SAMPLE_CNT * 1 / 4)) {    // too few samples in input buffer
+            if (dac->AudioDatCnt < (AUDIO_BUF_SAMPLE_CNT * 1 / 8)) {    // too few samples in input buffer
                if (doubling == 0) doubling = 10;
             }
             if (dac->playing) {
@@ -467,7 +467,7 @@ void Fill_I2S_Buffer(AudioDac* dac, uint32_t start_sample, uint32_t sample_count
                   printf("w");
                }
             }
-            if (dac->AudioDatCnt > (AUDIO_BUF_SAMPLE_CNT * 3 / 4)) { // too many samples in input buffer
+            if (dac->AudioDatCnt > (AUDIO_BUF_SAMPLE_CNT * 7 / 8)) { // too many samples in input buffer
                if (dropping == 0) dropping = 10;
             }
          }break;
