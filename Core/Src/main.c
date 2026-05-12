@@ -788,6 +788,12 @@ int main(void)
                TlvWriteReg(CODEC_A, TLV_PAGE_0, 16, PGA);  // PGA_R
                printf("PGA: %u\n", PGA);
             }
+         }else if (c == 't') { UI_EventProcKbd(0);
+         }else if (c == 'z') { UI_EventProcKbd(1);
+         }else if (c == 'h') { UI_EventProcKbd(2);
+         }else if (c == 'o') { UI_EventProcKbd(3);
+         }else if (c == 'i') { UI_EventProcKbd(4);
+         }else if (c == 'k') { UI_EventProcKbd(5);
          }else if (c == 'f') {
             TlvWriteReg(CODEC_A, TLV_PAGE_0, 12, 0xF0);  // Enable ADC high-pass filter
          }
