@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include "disp7seg.h"
+#include "gitinfo.h"
 #include "printf.h"
 #include "sounds.h"
 #include "tlv320aic3104_ctrl.h"
@@ -732,7 +733,14 @@ int main(void)
 
   TLV320_AIC3204_Init();
 
-  printf("Hello printf\n");
+   printf("----------------------------------------\n"
+      "Digital Audio\n"
+      "Git version: %s (%s)\n"
+      "----------------------------------------\n",
+      Git_VersionStr,
+      Git_BranchStr
+   );
+
   UI_Init();
 
   /* USER CODE END 2 */
