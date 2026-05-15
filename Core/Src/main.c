@@ -36,6 +36,7 @@
 #include "printf.h"
 #include "sounds.h"
 #include "tlv320aic3104_ctrl.h"
+#include "u8g2.h"
 #include "usart2_dma.h"
 #include "usart3_dma.h"
 #include "uart5_it.h"
@@ -114,6 +115,10 @@ AudioDac AudioDac_B = {GPDMA2, LL_DMA_CHANNEL_2, (uint32_t*)I2S3TxDmaBuf, sizeof
 
 uint8_t Vol = 0;
 
+// Display instances for OLED LCD A and LCD B
+static u8g2_t LcdA;
+static u8g2_t LcdB;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -143,6 +148,18 @@ static void MX_SPI1_Init(void);
 static inline void LD2_On()     { LL_GPIO_SetOutputPin(  SHR_DIN_KBD_LED_B_GPIO_Port, SHR_DIN_KBD_LED_B_Pin); }
 static inline void LD2_Off()    { LL_GPIO_ResetOutputPin(SHR_DIN_KBD_LED_B_GPIO_Port, SHR_DIN_KBD_LED_B_Pin); }
 static inline void LD2_Toggle() { LL_GPIO_TogglePin(     SHR_DIN_KBD_LED_B_GPIO_Port, SHR_DIN_KBD_LED_B_Pin); }
+
+static inline void LCDA_CS_Deselect()   { LL_GPIO_SetOutputPin( LCDA_CS_GPIO_Port, LCDA_CS_Pin);   }
+static inline void LCDA_CS_Select()     { LL_GPIO_ResetOutputPin( LCDA_CS_GPIO_Port, LCDA_CS_Pin); }
+
+static inline void LCDB_CS_Deselect()   { LL_GPIO_SetOutputPin( LCDB_CS_GPIO_Port, LCDB_CS_Pin);   }
+static inline void LCDB_CS_Select()     { LL_GPIO_ResetOutputPin( LCDB_CS_GPIO_Port, LCDB_CS_Pin); }
+
+static inline void LCD_DC_High()        { LL_GPIO_SetOutputPin( LCD_DC_GPIO_Port, LCD_DC_Pin);   }
+static inline void LCD_DC_Low()         { LL_GPIO_ResetOutputPin( LCD_DC_GPIO_Port, LCD_DC_Pin); }
+
+static inline void LCD_RST_High()       { LL_GPIO_SetOutputPin( LCD_RST_GPIO_Port, LCD_RST_Pin);   }
+static inline void LCD_RST_Low()        { LL_GPIO_ResetOutputPin( LCD_RST_GPIO_Port, LCD_RST_Pin); }
 
 /***************************************************************************//**
  * @brief Check if specified time interval has elapsed
@@ -640,6 +657,95 @@ void AudioSetChannelA(uint8_t chan) { AudioDac_A.AudioChSel = chan; }
 void AudioSetChannelB(uint8_t chan) { AudioDac_B.AudioChSel = chan; }
 
 
+/***************************************************************************//**
+* @brief  GPIO and delay callback for u8g2 library (LCD-A control)
+*//****************************************************************************/
+uint8_t u8x8_stm32_gpio_and_delay_LcdA(U8X8_UNUSED u8x8_t *u8x8, U8X8_UNUSED uint8_t msg, U8X8_UNUSED uint8_t arg_int, U8X8_UNUSED void *arg_ptr) {
+   switch (msg) {
+   case U8X8_MSG_GPIO_AND_DELAY_INIT:
+      LL_mDelay(1);
+      break;
+   case U8X8_MSG_DELAY_MILLI:
+      LL_mDelay(arg_int);
+      break;
+   case U8X8_MSG_GPIO_CS:
+      if (arg_int) LCDA_CS_Deselect();
+      else         LCDA_CS_Select();
+      break;
+   case U8X8_MSG_GPIO_DC:
+      if (arg_int) LCD_DC_High();
+      else         LCD_DC_Low();
+      break;
+   case U8X8_MSG_GPIO_RESET:
+      if (arg_int) LCD_RST_High();
+      else         LCD_RST_Low();
+      break;
+   }
+   return 1;
+}
+
+/***************************************************************************//**
+* @brief  GPIO and delay callback for u8g2 library (LCD-B control)
+*//****************************************************************************/
+uint8_t u8x8_stm32_gpio_and_delay_LcdB(U8X8_UNUSED u8x8_t *u8x8, U8X8_UNUSED uint8_t msg, U8X8_UNUSED uint8_t arg_int, U8X8_UNUSED void *arg_ptr) {
+   switch (msg) {
+   case U8X8_MSG_GPIO_AND_DELAY_INIT:
+      LL_mDelay(1);
+      break;
+   case U8X8_MSG_DELAY_MILLI:
+      LL_mDelay(arg_int);
+      break;
+   case U8X8_MSG_GPIO_CS:
+      if (arg_int) LCDB_CS_Deselect();
+      else         LCDB_CS_Select();
+      break;
+   case U8X8_MSG_GPIO_DC:
+      if (arg_int) LCD_DC_High();
+      else         LCD_DC_Low();
+      break;
+   case U8X8_MSG_GPIO_RESET:
+      // Shared reset pin for both LCDs, handled in LcdA callback
+      // Initialization order: first LcdA, then LcdB!
+      // Resetting in LcdA callback will reset both LCDs
+      break;
+   }
+   return 1;
+}
+
+/***************************************************************************//**
+* @brief  Byte-level communication callback for u8g2 library (4-wire hardware SPI)
+*//****************************************************************************/
+uint8_t u8x8_byte_4wire_hw_spi(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void *arg_ptr) {
+   switch (msg) {
+   case U8X8_MSG_BYTE_SEND:
+      uint8_t* dat = (uint8_t*)arg_ptr;
+      for (uint16_t i = 0; i < arg_int; i++) {
+         while (!LL_SPI_IsActiveFlag_TXP(SPI1)); // wait until transmit FIFO has space
+         LL_SPI_TransmitData8(SPI1, dat[i]);
+      }
+      while (!LL_SPI_IsActiveFlag_TXC(SPI1)); // Ensure the last byte has been physically transmitted (wait for TXC)
+      break;
+   case U8X8_MSG_BYTE_INIT:
+      u8x8_gpio_SetCS(u8x8, u8x8->display_info->chip_disable_level);
+      break;
+   case U8X8_MSG_BYTE_SET_DC:
+      u8x8_gpio_SetDC(u8x8, arg_int);
+      break;
+   case U8X8_MSG_BYTE_START_TRANSFER:
+      LL_SPI_Enable(SPI1);
+      LL_SPI_StartMasterTransfer(SPI1);
+      u8x8_gpio_SetCS(u8x8, u8x8->display_info->chip_enable_level);
+      break;
+   case U8X8_MSG_BYTE_END_TRANSFER:
+      u8x8_gpio_SetCS(u8x8, u8x8->display_info->chip_disable_level);
+      LL_SPI_ClearFlag_TXTF(SPI1);
+      LL_SPI_Disable(SPI1);
+      break;
+   default:
+      return 0;
+   }
+   return 1;
+}
 
 
 /* USER CODE END 0 */
@@ -732,6 +838,37 @@ int main(void)
   Uart5_Init();
 
   TLV320_AIC3204_Init();
+
+   u8g2_Setup_sh1106_128x64_noname_f(&LcdA, U8G2_R0, u8x8_byte_4wire_hw_spi, u8x8_stm32_gpio_and_delay_LcdA);
+   u8g2_Setup_sh1106_128x64_noname_f(&LcdB, U8G2_R0, u8x8_byte_4wire_hw_spi, u8x8_stm32_gpio_and_delay_LcdB);
+   u8g2_InitDisplay(&LcdA);
+   u8g2_InitDisplay(&LcdB);
+   u8g2_SetPowerSave(&LcdA, 0);
+   u8g2_SetPowerSave(&LcdB, 0);
+
+   char s[64];
+   u8g2_ClearBuffer(&LcdA);
+   u8g2_ClearBuffer(&LcdB);
+   u8g2_DrawFrame(&LcdA, 0, 0, 128, 64);   // frame
+   u8g2_DrawFrame(&LcdB, 0, 0, 128, 64);   // frame
+   u8g2_SetFont(&LcdA, u8g2_font_8x13B_tf);
+   u8g2_SetFont(&LcdB, u8g2_font_8x13B_tf);
+   sprintf(s, "Digital Audio");
+   u8g2_DrawStr(&LcdA, 12, 20, s);      // title
+   u8g2_DrawStr(&LcdB, 12, 20, s);      // title
+   u8g2_SetFont(&LcdA, u8g2_font_6x10_tf);
+   u8g2_SetFont(&LcdB, u8g2_font_6x10_tf);
+   sprintf(s, "Software: v0.3");
+   u8g2_DrawStr(&LcdA, 6, 36, s);
+   u8g2_DrawStr(&LcdB, 6, 36, s);
+   sprintf(s, "Git: %s", Git_VersionStr, Git_BranchStr);
+   u8g2_DrawStr(&LcdA, 6, 46, s);
+   u8g2_DrawStr(&LcdB, 6, 46, s);
+   sprintf(s, "Date: %04u-%02u-%02u", Git_DateYear, Git_DateMonth, Git_DateDay);
+   u8g2_DrawStr(&LcdA, 6, 56, s);
+   u8g2_DrawStr(&LcdB, 6, 56, s);
+   u8g2_SendBuffer(&LcdA); // transfer buffer content to LCD
+   u8g2_SendBuffer(&LcdB); // transfer buffer content to LCD
 
    printf("----------------------------------------\n"
       "Digital Audio\n"
